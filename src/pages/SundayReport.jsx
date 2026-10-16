@@ -1,16 +1,12 @@
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, Trash2, Pencil, Save, X, Check } from 'lucide-react'
 
-// Temporary sample data.
-// Later, these members will come from Appwrite.
-const churchMembers = [
-  { id: 'm1', name: 'John Smith' },
-  { id: 'm2', name: 'Mary Johnson' },
-  { id: 'm3', name: 'David Williams' },
-  { id: 'm4', name: 'Sarah Brown' },
-  { id: 'm5', name: 'Michael Davis' },
-]
+import { getMembers, createMember } from '../lib/membersService'
+import {
+  getOrCreateService,
+  createAttendance,
+} from '../lib/attendanceService'
 
 export default function SundayReport() {
   const [serviceDate, setServiceDate] = useState(
@@ -20,11 +16,16 @@ export default function SundayReport() {
   const [sermonTitle, setSermonTitle] = useState('')
   const [keyPoints, setKeyPoints] = useState('')
 
+  const [churchMembers, setChurchMembers] = useState([])
+  const [membersLoading, setMembersLoading] = useState(true)
   const [attendees, setAttendees] = useState([])
   const [selectedMemberId, setSelectedMemberId] = useState('')
   const [attendanceType, setAttendanceType] = useState('In person')
   const [visitorName, setVisitorName] = useState('')
+
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState('info')
+  const [saving, setSaving] = useState(false)
 
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
@@ -35,55 +36,93 @@ export default function SundayReport() {
 
   const labelClass = 'mb-2 block text-sm font-medium text-gray-700'
 
-  function addAttendee() {
+  async function loadChurchMembers() {
+    setMembersLoading(true)
+
+    try {
+      const data = await getMembers()
+      setChurchMembers(data)
+    } catch (error) {
+      console.error('Could not load church members:', error)
+      setMessage('Could not load members. Please check Appwrite permissions.')
+      setMessageType('error')
+    } finally {
+      setMembersLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadChurchMembers()
+  }, [])
+
+  function showMessage(text, type = 'info') {
+    setMessage(text)
+    setMessageType(type)
+  }
+
+  async function addAttendee() {
+    setMessage('')
+
     let member
 
     if (selectedMemberId === 'visitor') {
       if (!visitorName.trim()) {
-        setMessage('Please enter the visitor name.')
+        showMessage('Please enter the visitor name.', 'error')
         return
       }
 
-      member = {
-        id: `visitor-${Date.now()}`,
-        name: visitorName.trim(),
-        isVisitor: true,
+      try {
+        member = await createMember({
+          name: visitorName.trim(),
+          person_type: 'visitor',
+        })
+
+        setChurchMembers((current) => [...current, member])
+        setSelectedMemberId(member.$id)
+        setVisitorName('')
+      } catch (error) {
+        console.error('Could not create visitor:', error)
+        showMessage(
+          error.message || 'Could not save the visitor to Appwrite.',
+          'error'
+        )
+        return
       }
     } else {
       member = churchMembers.find(
-        (person) => person.id === selectedMemberId
+        (person) => person.$id === selectedMemberId
       )
 
       if (!member) {
-        setMessage('Please select a member or visitor.')
+        showMessage('Please select a member or visitor.', 'error')
         return
       }
+    }
 
-      const alreadyAdded = attendees.some(
-        (person) => person.memberId === member.id
-      )
+    const alreadyAdded = attendees.some(
+      (person) => person.memberId === member.$id
+    )
 
-      if (alreadyAdded) {
-        setMessage(`${member.name} has already been added.`)
-        return
-      }
+    if (alreadyAdded) {
+      showMessage(`${member.name} has already been added.`, 'error')
+      return
     }
 
     setAttendees((current) => [
       ...current,
       {
-        id: `${member.id}-${Date.now()}`,
-        memberId: member.isVisitor ? null : member.id,
+        id: `${member.$id}-${Date.now()}`,
+        memberId: member.$id,
         name: member.name,
         type: attendanceType,
-        isVisitor: Boolean(member.isVisitor),
+        isVisitor: member.person_type === 'visitor',
       },
     ])
 
     setSelectedMemberId('')
     setVisitorName('')
     setAttendanceType('In person')
-    setMessage('')
+    showMessage(`${member.name} added to the attendance list.`, 'success')
   }
 
   function startEditing(person) {
@@ -101,7 +140,7 @@ export default function SundayReport() {
 
   function saveEdit(id) {
     if (!editName.trim()) {
-      setMessage('The attendee name cannot be empty.')
+      showMessage('The attendee name cannot be empty.', 'error')
       return
     }
 
@@ -118,7 +157,7 @@ export default function SundayReport() {
     )
 
     cancelEditing()
-    setMessage('Attendee updated successfully.')
+    showMessage('Attendance details updated.', 'success')
   }
 
   function removeAttendee(id) {
@@ -130,22 +169,79 @@ export default function SundayReport() {
       cancelEditing()
     }
 
-    setMessage('')
+    showMessage('Attendee removed from this report.', 'info')
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
 
     if (!preacher.trim() || !sermonTitle.trim()) {
-      setMessage(
-        'Please complete the preacher and sermon title fields.'
+      showMessage(
+        "Please complete the preacher's name and sermon title.",
+        'error'
       )
       return
     }
 
-    setMessage(
-      `Report prepared successfully! ${attendees.length} attendee(s) added.`
-    )
+    if (attendees.length === 0) {
+      showMessage(
+        'Please add at least one attendee before preparing the report.',
+        'error'
+      )
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+
+    try {
+      const serviceId = await getOrCreateService({
+        serviceDate,
+        preacherName: preacher,
+        sermonTitle,
+        keyPoints,
+      })
+
+      let savedCount = 0
+      const errors = []
+
+      for (const person of attendees) {
+        try {
+          await createAttendance({
+            serviceId,
+            memberId: person.memberId,
+            presenceType: person.type,
+          })
+          savedCount++
+        } catch (error) {
+          console.error(
+            `Could not save attendance for ${person.name}:`,
+            error
+          )
+          errors.push(person.name)
+        }
+      }
+
+      if (errors.length > 0) {
+        showMessage(
+          `Service saved. ${savedCount} attendance record(s) saved. Could not save: ${errors.join(', ')}. Please check the Appwrite permissions and try again.`,
+          'error'
+        )
+      } else {
+        showMessage(
+          `Report saved successfully! ${savedCount} attendance record(s) saved.`,
+          'success'
+        )
+      }
+    } catch (error) {
+      console.error('Could not save Sunday report:', error)
+      showMessage(
+        error.message || 'Could not save the report. Please try again.',
+        'error'
+      )
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -232,18 +328,20 @@ export default function SundayReport() {
                   setMessage('')
                 }}
                 className={inputClass}
+                disabled={membersLoading || saving}
               >
-                <option value="">Choose a member...</option>
+                <option value="">
+                  {membersLoading ? 'Loading members...' : 'Choose a member...'}
+                </option>
 
                 {churchMembers.map((member) => (
-                  <option key={member.id} value={member.id}>
+                  <option key={member.$id} value={member.$id}>
                     {member.name}
+                    {member.person_type === 'visitor' ? ' (Visitor)' : ''}
                   </option>
                 ))}
 
-                <option value="visitor">
-                  + Add a visitor not in the list
-                </option>
+                <option value="visitor">+ Add a new visitor</option>
               </select>
             </div>
 
@@ -253,6 +351,7 @@ export default function SundayReport() {
                 value={attendanceType}
                 onChange={(e) => setAttendanceType(e.target.value)}
                 className={inputClass}
+                disabled={saving}
               >
                 <option>In person</option>
                 <option>Online</option>
@@ -268,6 +367,7 @@ export default function SundayReport() {
                 onChange={(e) => setVisitorName(e.target.value)}
                 placeholder="Enter visitor's full name"
                 className={inputClass}
+                disabled={saving}
               />
             </div>
           )}
@@ -275,7 +375,8 @@ export default function SundayReport() {
           <button
             type="button"
             onClick={addAttendee}
-            className="mt-4 flex items-center gap-2 rounded-lg bg-blue-900 px-4 py-3 text-sm font-medium text-white hover:bg-blue-800"
+            disabled={membersLoading || saving}
+            className="mt-4 flex items-center gap-2 rounded-lg bg-blue-900 px-4 py-3 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={18} />
             Add Attendee
@@ -290,7 +391,9 @@ export default function SundayReport() {
                 {editingId === person.id ? (
                   <div className="space-y-3">
                     <div>
-                      <label className={labelClass}>Correct Name</label>
+                      <label className={labelClass}>
+                        Correct Name
+                      </label>
                       <input
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
@@ -386,7 +489,13 @@ export default function SundayReport() {
         {message && (
           <p
             role="status"
-            className="rounded-lg bg-blue-50 p-4 text-sm text-blue-900"
+            className={`rounded-lg p-4 text-sm ${
+              messageType === 'error'
+                ? 'bg-red-50 text-red-800'
+                : messageType === 'success'
+                  ? 'bg-green-50 text-green-800'
+                  : 'bg-blue-50 text-blue-900'
+            }`}
           >
             {message}
           </p>
@@ -395,10 +504,11 @@ export default function SundayReport() {
         <div className="flex justify-end">
           <button
             type="submit"
-            className="flex items-center gap-2 rounded-lg bg-blue-900 px-5 py-3 font-medium text-white hover:bg-blue-800"
+            disabled={saving || membersLoading}
+            className="flex items-center gap-2 rounded-lg bg-blue-900 px-5 py-3 font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save size={18} />
-            Prepare Report
+            {saving ? 'Saving report...' : 'Prepare Report'}
           </button>
         </div>
       </form>
