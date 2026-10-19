@@ -15,6 +15,12 @@ export async function getOrCreateService({
   sermonTitle,
   keyPoints,
 }) {
+  if (!serviceDate || !preacherName.trim() || !sermonTitle.trim()) {
+    throw new Error(
+      'Please provide the service date, preacher name and sermon title.'
+    )
+  }
+
   const start = new Date(`${serviceDate}T00:00:00`)
   const end = new Date(`${serviceDate}T00:00:00`)
   end.setDate(end.getDate() + 1)
@@ -33,7 +39,7 @@ export async function getOrCreateService({
     service_date: new Date(`${serviceDate}T12:00:00`).toISOString(),
     preacher_name: preacherName.trim(),
     sermon_title: sermonTitle.trim(),
-    sermon_key_points: keyPoints.trim(),
+    sermon_key_points: (keyPoints ?? '').trim(),
   }
 
   if (response.rows.length > 0) {
@@ -59,7 +65,8 @@ export async function getOrCreateService({
   return createdService.$id
 }
 
-// Save one attendee's presence for a service.
+// Create an attendance record only if the member
+// is not already recorded for this service.
 export async function createAttendance({
   serviceId,
   memberId,
@@ -73,7 +80,24 @@ export async function createAttendance({
     throw new Error('Invalid attendance type.')
   }
 
-  return tablesDB.createRow({
+  const existing = await tablesDB.listRows({
+    databaseId: DATABASE_ID,
+    tableId: ATTENDANCE_TABLE_ID,
+    queries: [
+      Query.equal('service', serviceId),
+      Query.equal('member', memberId),
+      Query.limit(1),
+    ],
+  })
+
+  if (existing.rows.length > 0) {
+    return {
+      created: false,
+      row: existing.rows[0],
+    }
+  }
+
+  const row = await tablesDB.createRow({
     databaseId: DATABASE_ID,
     tableId: ATTENDANCE_TABLE_ID,
     rowId: ID.unique(),
@@ -83,4 +107,9 @@ export async function createAttendance({
       presence_type: presenceType,
     },
   })
+
+  return {
+    created: true,
+    row,
+  }
 }

@@ -36,6 +36,11 @@ export default function SundayReport() {
 
   const labelClass = 'mb-2 block text-sm font-medium text-gray-700'
 
+  function showMessage(text, type = 'info') {
+    setMessage(text)
+    setMessageType(type)
+  }
+
   async function loadChurchMembers() {
     setMembersLoading(true)
 
@@ -44,8 +49,10 @@ export default function SundayReport() {
       setChurchMembers(data)
     } catch (error) {
       console.error('Could not load church members:', error)
-      setMessage('Could not load members. Please check Appwrite permissions.')
-      setMessageType('error')
+      showMessage(
+        'Could not load members. Please check Appwrite permissions.',
+        'error'
+      )
     } finally {
       setMembersLoading(false)
     }
@@ -55,38 +62,61 @@ export default function SundayReport() {
     loadChurchMembers()
   }, [])
 
-  function showMessage(text, type = 'info') {
-    setMessage(text)
-    setMessageType(type)
-  }
-
   async function addAttendee() {
-    setMessage('')
+    showMessage('')
 
     let member
 
     if (selectedMemberId === 'visitor') {
-      if (!visitorName.trim()) {
+      const cleanVisitorName = visitorName.trim()
+
+      if (!cleanVisitorName) {
         showMessage('Please enter the visitor name.', 'error')
         return
       }
 
-      try {
-        member = await createMember({
-          name: visitorName.trim(),
-          person_type: 'visitor',
-        })
+      // Avoid creating another visitor profile when the same
+      // visitor is already on this report.
+      const duplicateVisitor = attendees.some(
+        (person) =>
+          person.isVisitor &&
+          person.name.trim().toLowerCase() ===
+            cleanVisitorName.toLowerCase()
+      )
 
-        setChurchMembers((current) => [...current, member])
-        setSelectedMemberId(member.$id)
-        setVisitorName('')
-      } catch (error) {
-        console.error('Could not create visitor:', error)
+      if (duplicateVisitor) {
         showMessage(
-          error.message || 'Could not save the visitor to Appwrite.',
+          'This visitor is already on the attendance list.',
           'error'
         )
         return
+      }
+
+      // Reuse an existing visitor profile with the same name
+      // instead of creating another profile.
+      member = churchMembers.find(
+        (person) =>
+          person.person_type === 'visitor' &&
+          person.name.trim().toLowerCase() ===
+            cleanVisitorName.toLowerCase()
+      )
+
+      if (!member) {
+        try {
+          member = await createMember({
+            name: cleanVisitorName,
+            person_type: 'visitor',
+          })
+
+          setChurchMembers((current) => [...current, member])
+        } catch (error) {
+          console.error('Could not create visitor:', error)
+          showMessage(
+            error.message || 'Could not save the visitor to Appwrite.',
+            'error'
+          )
+          return
+        }
       }
     } else {
       member = churchMembers.find(
@@ -99,6 +129,7 @@ export default function SundayReport() {
       }
     }
 
+    // Prevent adding the same member twice to this report.
     const alreadyAdded = attendees.some(
       (person) => person.memberId === member.$id
     )
@@ -122,6 +153,7 @@ export default function SundayReport() {
     setSelectedMemberId('')
     setVisitorName('')
     setAttendanceType('In person')
+
     showMessage(`${member.name} added to the attendance list.`, 'success')
   }
 
@@ -129,7 +161,7 @@ export default function SundayReport() {
     setEditingId(person.id)
     setEditName(person.name)
     setEditType(person.type)
-    setMessage('')
+    showMessage('')
   }
 
   function cancelEditing() {
@@ -175,9 +207,9 @@ export default function SundayReport() {
   async function handleSubmit(event) {
     event.preventDefault()
 
-    if (!preacher.trim() || !sermonTitle.trim()) {
+    if (!serviceDate || !preacher.trim() || !sermonTitle.trim()) {
       showMessage(
-        "Please complete the preacher's name and sermon title.",
+        "Please complete the service date, preacher's name and sermon title.",
         'error'
       )
       return
@@ -192,7 +224,7 @@ export default function SundayReport() {
     }
 
     setSaving(true)
-    setMessage('')
+    showMessage('')
 
     try {
       const serviceId = await getOrCreateService({
@@ -203,16 +235,22 @@ export default function SundayReport() {
       })
 
       let savedCount = 0
+      let duplicateCount = 0
       const errors = []
 
       for (const person of attendees) {
         try {
-          await createAttendance({
+          const result = await createAttendance({
             serviceId,
             memberId: person.memberId,
             presenceType: person.type,
           })
-          savedCount++
+
+          if (result.created) {
+            savedCount++
+          } else {
+            duplicateCount++
+          }
         } catch (error) {
           console.error(
             `Could not save attendance for ${person.name}:`,
@@ -224,12 +262,12 @@ export default function SundayReport() {
 
       if (errors.length > 0) {
         showMessage(
-          `Service saved. ${savedCount} attendance record(s) saved. Could not save: ${errors.join(', ')}. Please check the Appwrite permissions and try again.`,
+          `Service saved. ${savedCount} new attendance record(s) saved. ${duplicateCount} duplicate(s) skipped. Could not save: ${errors.join(', ')}.`,
           'error'
         )
       } else {
         showMessage(
-          `Report saved successfully! ${savedCount} attendance record(s) saved.`,
+          `Report saved successfully! ${savedCount} new attendance record(s) saved. ${duplicateCount} duplicate(s) skipped.`,
           'success'
         )
       }
@@ -331,13 +369,17 @@ export default function SundayReport() {
                 disabled={membersLoading || saving}
               >
                 <option value="">
-                  {membersLoading ? 'Loading members...' : 'Choose a member...'}
+                  {membersLoading
+                    ? 'Loading members...'
+                    : 'Choose a member...'}
                 </option>
 
                 {churchMembers.map((member) => (
                   <option key={member.$id} value={member.$id}>
                     {member.name}
-                    {member.person_type === 'visitor' ? ' (Visitor)' : ''}
+                    {member.person_type === 'visitor'
+                      ? ' (Visitor)'
+                      : ''}
                   </option>
                 ))}
 
@@ -391,9 +433,7 @@ export default function SundayReport() {
                 {editingId === person.id ? (
                   <div className="space-y-3">
                     <div>
-                      <label className={labelClass}>
-                        Correct Name
-                      </label>
+                      <label className={labelClass}>Correct Name</label>
                       <input
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
@@ -447,7 +487,9 @@ export default function SundayReport() {
                           {person.type}
                         </span>
                         <span className="text-xs text-gray-500">
-                          {person.isVisitor ? 'Visitor' : 'Church member'}
+                          {person.isVisitor
+                            ? 'Visitor'
+                            : 'Church member'}
                         </span>
                       </div>
                     </div>
