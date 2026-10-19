@@ -1,6 +1,6 @@
-
 import { Navigate, Route, Routes } from 'react-router-dom'
 
+import ProtectedRoute from './components/ProtectedRoute'
 import DashboardLayout from './layouts/DashboardLayout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -14,12 +14,14 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
 
-      <Route element={<DashboardLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/sunday-report" element={<SundayReport />} />
-        <Route path="/members" element={<Members />} />
-        <Route path="/statistics" element={<Statistics />} />
-        <Route path="/print-report" element={<PrintReport />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<DashboardLayout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/sunday-report" element={<SundayReport />} />
+          <Route path="/members" element={<Members />} />
+          <Route path="/statistics" element={<Statistics />} />
+          <Route path="/print-report" element={<PrintReport />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
