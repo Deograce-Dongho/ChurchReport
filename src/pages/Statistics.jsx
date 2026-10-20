@@ -5,19 +5,13 @@ import { Download } from 'lucide-react'
 import { getMembers } from '../lib/membersService'
 import { listServices } from '../lib/servicesService'
 import { useServicesAttendance } from '../lib/useServicesAttendance'
+import { usePeriod } from '../lib/usePeriod'
 import { downloadElementAsPDF } from '../lib/pdfExport'
-import {
-  PERIODS,
-  formatShortDate,
-  parseInputDate,
-  servicesInRange,
-  toInputDate,
-} from '../lib/periods'
+import { formatShortDate, servicesInRange, toInputDate } from '../lib/periods'
+import PeriodPicker from '../components/PeriodPicker'
 
 // Set VITE_CHURCH_NAME in .env (and in Vercel) to print your church name.
 const CHURCH_NAME = import.meta.env.VITE_CHURCH_NAME || 'Church Name'
-
-const DEFAULT_PERIOD = PERIODS[0] // Last 3 months
 
 const numberFormat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 })
 
@@ -27,13 +21,10 @@ export default function Statistics() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
-  // Selected period
-  const [startDate, setStartDate] = useState(() =>
-    toInputDate(DEFAULT_PERIOD.range()[0])
-  )
-  const [endDate, setEndDate] = useState(() =>
-    toInputDate(DEFAULT_PERIOD.range()[1])
-  )
+  // Selected period: a preset or custom dates
+  const period = usePeriod('3m')
+  const { range } = period
+  const periodLabel = range.valid ? range.label : ''
 
   const [downloading, setDownloading] = useState(false)
   const [pdfError, setPdfError] = useState('')
@@ -72,24 +63,6 @@ export default function Statistics() {
     }
   }, [])
 
-  const range = useMemo(() => {
-    const start = parseInputDate(startDate)
-    const end = parseInputDate(endDate)
-
-    if (!start || !end) {
-      return { valid: false, message: 'Please choose a start date and an end date.' }
-    }
-
-    if (start > end) {
-      return {
-        valid: false,
-        message: 'The start date must be on or before the end date.',
-      }
-    }
-
-    return { valid: true, start, end }
-  }, [startDate, endDate])
-
   // Services of the period, oldest first
   const orderedServices = useMemo(
     () => (range.valid ? servicesInRange(services, range.start, range.end) : []),
@@ -112,12 +85,6 @@ export default function Statistics() {
   const stats = useMemo(() => {
     if (!ready) return null
 
-    const visitorIds = new Set()
-    let inPerson = 0
-    let online = 0
-    let memberAttendances = 0
-    let visitorAttendances = 0
-
     const rows = orderedServices.map((service) => {
       const records = attendanceById[service.$id] ?? []
       const row = {
@@ -129,6 +96,7 @@ export default function Statistics() {
         online: 0,
         members: 0,
         visitors: 0,
+        visitorIds: [],
       }
 
       for (const record of records) {
@@ -139,19 +107,21 @@ export default function Statistics() {
 
         if (isVisitor) {
           row.visitors++
-          visitorIds.add(record.memberId)
+          row.visitorIds.push(record.memberId)
         } else {
           row.members++
         }
       }
 
-      inPerson += row.inPerson
-      online += row.online
-      memberAttendances += row.members
-      visitorAttendances += row.visitors
-
       return row
     })
+
+    const sum = (key) => rows.reduce((total, row) => total + row[key], 0)
+
+    const inPerson = sum('inPerson')
+    const online = sum('online')
+    const memberAttendances = sum('members')
+    const visitorAttendances = sum('visitors')
 
     const serviceCount = rows.length
     const totalAttendances = inPerson + online
@@ -167,7 +137,7 @@ export default function Statistics() {
       averageMembers: serviceCount ? memberAttendances / serviceCount : 0,
       memberAttendances,
       visitorAttendances,
-      uniqueVisitors: visitorIds.size,
+      uniqueVisitors: new Set(rows.flatMap((row) => row.visitorIds)).size,
       inPerson,
       online,
       inPersonPercent,
@@ -175,17 +145,7 @@ export default function Statistics() {
     }
   }, [ready, orderedServices, attendanceById, peopleById])
 
-  const periodLabel = range.valid
-    ? `${formatShortDate(range.start)} - ${formatShortDate(range.end)}`
-    : ''
-
   const canDownload = range.valid && ready && !!stats && stats.serviceCount > 0
-
-  function applyPreset(preset) {
-    const [start, end] = preset.range()
-    setStartDate(toInputDate(start))
-    setEndDate(toInputDate(end))
-  }
 
   async function handleDownloadPDF() {
     if (!canDownload || downloading) return
@@ -196,7 +156,8 @@ export default function Statistics() {
     try {
       await downloadElementAsPDF(
         reportRef.current,
-        `Statistics-${startDate}-to-${endDate}.pdf`
+        `Statistics-${toInputDate(range.start)}-to-${toInputDate(range.end)}.pdf`,
+        { pageNumbers: true }
       )
     } catch (err) {
       console.error('Could not generate PDF:', err)
@@ -207,9 +168,6 @@ export default function Statistics() {
       setDownloading(false)
     }
   }
-
-  const inputClass =
-    'rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-blue-600 disabled:opacity-60'
 
   return (
     <section className="space-y-6">
@@ -223,60 +181,24 @@ export default function Statistics() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label htmlFor="stats-start" className="mb-1 block text-xs text-slate-600">
-              From
-            </label>
-            <input
-              id="stats-start"
-              type="date"
-              value={startDate}
-              max={endDate || undefined}
-              onChange={(e) => setStartDate(e.target.value)}
-              disabled={loading || downloading}
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="stats-end" className="mb-1 block text-xs text-slate-600">
-              To
-            </label>
-            <input
-              id="stats-end"
-              type="date"
-              value={endDate}
-              min={startDate || undefined}
-              onChange={(e) => setEndDate(e.target.value)}
-              disabled={loading || downloading}
-              className={inputClass}
-            />
-          </div>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <PeriodPicker
+            variant="chips"
+            label="Period"
+            idPrefix="stats-period"
+            period={period}
+            disabled={loading || downloading}
+          />
 
           <button
             type="button"
             onClick={handleDownloadPDF}
             disabled={!canDownload || downloading}
-            className="ml-auto flex items-center gap-2 rounded-lg bg-[#142D4E] px-4 py-3 text-sm font-medium text-white hover:bg-[#1d416c] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-[#142D4E] px-4 py-3 text-sm font-medium text-white hover:bg-[#1d416c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download size={18} />
             {downloading ? 'Generating PDF...' : 'Download PDF'}
           </button>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {PERIODS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => applyPreset(preset)}
-              disabled={loading || downloading}
-              className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-            >
-              {preset.label}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -316,11 +238,7 @@ export default function Statistics() {
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading statistics...</p>
-      ) : loadError ? null : !range.valid ? (
-        <p className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
-          {range.message}
-        </p>
-      ) : !ready ? (
+      ) : loadError || !range.valid ? null : !ready ? (
         attendanceError ? null : (
           <p className="text-sm text-slate-500">Loading statistics...</p>
         )

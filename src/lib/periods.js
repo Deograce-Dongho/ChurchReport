@@ -53,6 +53,11 @@ export const PERIODS = [
   },
 ]
 
+// Id and label of the "Other period..." choice: the user types the two dates
+// (not a preset)
+export const CUSTOM_PERIOD_ID = 'custom'
+export const CUSTOM_PERIOD_LABEL = 'Other period…'
+
 // YYYY-MM-DD in local time, as used by <input type="date">
 export function toInputDate(date) {
   return date.toLocaleDateString('en-CA')
@@ -89,4 +94,41 @@ export function servicesInRange(services, start, end) {
       return date >= start && date < endExclusive
     })
     .sort((a, b) => new Date(a.service_date) - new Date(b.service_date))
+}
+
+// Turns a selected period into { valid, start, end, label } or
+// { valid: false, message }. For a custom period the two dates are the
+// "YYYY-MM-DD" strings typed by the user. Both dates are included.
+export function resolveRange(periodId, customStart, customEnd) {
+  let start
+  let end
+
+  if (periodId === CUSTOM_PERIOD_ID) {
+    start = parseInputDate(customStart)
+    end = parseInputDate(customEnd)
+
+    if (!start || !end) {
+      return {
+        valid: false,
+        message: 'Please choose a start date and an end date.',
+      }
+    }
+  } else {
+    const period = PERIODS.find((item) => item.id === periodId) ?? PERIODS[0]
+    ;[start, end] = period.range()
+  }
+
+  if (start > end) {
+    return {
+      valid: false,
+      message: 'The start date must be on or before the end date.',
+    }
+  }
+
+  return {
+    valid: true,
+    start,
+    end,
+    label: `${formatShortDate(start)} - ${formatShortDate(end)}`,
+  }
 }

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, Pencil, Trash2 } from 'lucide-react'
+
 import {
   getMembers,
   createMember,
@@ -7,8 +9,13 @@ import {
 } from '../lib/membersService'
 import { listServices } from '../lib/servicesService'
 import { useServicesAttendance } from '../lib/useServicesAttendance'
-import { PERIODS, servicesInRange } from '../lib/periods'
+import { usePeriod } from '../lib/usePeriod'
+import { servicesInRange, toInputDate } from '../lib/periods'
 import { LEVELS, LEVELS_BY_ID, getLevelId } from '../lib/regularity'
+import { downloadElementAsPDF } from '../lib/pdfExport'
+import IconButton from '../components/IconButton'
+import PeriodPicker from '../components/PeriodPicker'
+import MembersPdfReport from '../components/MembersPdfReport'
 
 const PAGE_SIZE = 25
 
@@ -18,6 +25,18 @@ const emptyForm = {
   phone: '',
   person_type: 'member',
 }
+
+// First group of the "Show" list. The other values are regularity levels.
+const CATEGORY_FILTERS = [
+  { id: 'all', label: 'All people' },
+  { id: 'member', label: 'All members' },
+  { id: 'visitor', label: 'All visitors' },
+]
+
+const byName = (a, b) =>
+  String(a.person.name ?? '').localeCompare(String(b.person.name ?? ''), undefined, {
+    sensitivity: 'base',
+  })
 
 export default function Members() {
   const [members, setMembers] = useState([])
@@ -31,12 +50,21 @@ export default function Members() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  // Regularity
+  // "Show" list: a category (all / members / visitors) or a regularity level
+  const [filter, setFilter] = useState('all')
+
+  // Attendance period
+  const period = usePeriod()
+  const { range } = period
+
   const [services, setServices] = useState([])
   const [servicesLoaded, setServicesLoaded] = useState(false)
   const [servicesError, setServicesError] = useState('')
-  const [periodId, setPeriodId] = useState(PERIODS[0].id)
-  const [levelFilter, setLevelFilter] = useState('all')
+
+  // PDF export
+  const [exportJob, setExportJob] = useState(null)
+  const [pdfError, setPdfError] = useState('')
+  const pdfRef = useRef(null)
 
   async function loadMembers() {
     setLoading(true)
@@ -56,8 +84,30 @@ export default function Members() {
     }
   }
 
+  // First load (the page starts with loading = true)
   useEffect(() => {
-    loadMembers()
+    let cancelled = false
+
+    getMembers()
+      .then((data) => {
+        if (!cancelled) setMembers(data)
+      })
+      .catch((err) => {
+        console.error('Could not load members:', err)
+        if (!cancelled) {
+          setError(
+            err.message ||
+              'Could not load people. Check your Appwrite configuration and permissions.'
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Load the services once; the attendance is loaded per selected period.
@@ -86,11 +136,10 @@ export default function Members() {
   }, [])
 
   // Services held in the selected period, oldest first
-  const periodServices = useMemo(() => {
-    const period = PERIODS.find((item) => item.id === periodId) ?? PERIODS[0]
-    const [start, end] = period.range()
-    return servicesInRange(services, start, end)
-  }, [services, periodId])
+  const periodServices = useMemo(
+    () => (range.valid ? servicesInRange(services, range.start, range.end) : []),
+    [services, range]
+  )
 
   const {
     attendanceById,
@@ -99,7 +148,15 @@ export default function Members() {
     retry,
   } = useServicesAttendance(periodServices)
 
-  const regularityReady = servicesLoaded && !servicesError && ready
+  // 'ready' | 'loading' | 'unavailable' (invalid period or loading failed)
+  const regularityStatus =
+    !range.valid || servicesError || (attendanceError && !ready)
+      ? 'unavailable'
+      : servicesLoaded && ready
+        ? 'ready'
+        : 'loading'
+
+  const regularityReady = regularityStatus === 'ready'
   const periodTotal = periodServices.length
 
   // memberId -> number of services attended in the period
@@ -126,19 +183,25 @@ export default function Members() {
           person,
           attended,
           levelId:
-            isVisitor || periodTotal === 0
+            isVisitor || !regularityReady || periodTotal === 0
               ? null
               : getLevelId(attended, periodTotal),
         }
       }),
-    [members, attendedByMember, periodTotal]
+    [members, attendedByMember, regularityReady, periodTotal]
   )
+
+  const levelSelected = LEVELS_BY_ID[filter] ? filter : null
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase()
 
     return rows.filter(({ person, levelId }) => {
-      if (levelFilter !== 'all' && levelId !== levelFilter) return false
+      const isVisitor = person.person_type === 'visitor'
+
+      if (filter === 'member' && isVisitor) return false
+      if (filter === 'visitor' && !isVisitor) return false
+      if (levelSelected && levelId !== levelSelected) return false
 
       return [
         person.name,
@@ -149,7 +212,7 @@ export default function Members() {
         String(value ?? '').toLowerCase().includes(term)
       )
     })
-  }, [rows, search, levelFilter])
+  }, [rows, search, filter, levelSelected])
 
   const totalPages = Math.max(
     1,
@@ -163,6 +226,83 @@ export default function Members() {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE
   )
+
+  // The Regularity column makes no sense when only visitors are shown
+  const showRegularity = filter !== 'visitor'
+  const columnCount = showRegularity ? 8 : 7
+
+  let emptyMessage = 'No people to display yet. Click "+ Add person" to begin.'
+
+  if (levelSelected && regularityStatus === 'loading') {
+    emptyMessage = 'Loading regularity...'
+  } else if (levelSelected && regularityStatus === 'unavailable') {
+    emptyMessage = 'Regularity is not available for the selected period.'
+  } else if (levelSelected && periodTotal === 0) {
+    emptyMessage =
+      'No services were recorded in this period, so there are no regularity levels.'
+  } else if (search || filter !== 'all') {
+    emptyMessage = 'No matching people found.'
+  }
+
+  // ---------- PDF ----------
+
+  const pdfKind =
+    filter === 'visitor'
+      ? 'Visitors'
+      : filter === 'member' || levelSelected
+        ? 'Members'
+        : 'Members & Visitors'
+
+  const pdfWithAttendance = regularityReady && periodTotal > 0
+
+  const pdfRows = useMemo(
+    () => (exportJob ? [...filteredRows].sort(byName) : []),
+    [exportJob, filteredRows]
+  )
+
+  const pdfFilterSummary = [
+    `Category: ${pdfKind === 'Members & Visitors' ? 'Members and visitors' : pdfKind}`,
+    levelSelected
+      ? `Regularity: ${LEVELS_BY_ID[levelSelected].label} (${LEVELS_BY_ID[levelSelected].rule})`
+      : null,
+    search.trim() ? `Search: "${search.trim()}"` : null,
+  ]
+    .filter(Boolean)
+    .join(' - ')
+
+  const canDownload =
+    !loading &&
+    !exportJob &&
+    filteredRows.length > 0 &&
+    regularityStatus !== 'loading'
+
+  function handleDownloadPDF() {
+    if (!canDownload) return
+
+    setPdfError('')
+
+    setExportJob({
+      filename: `${pdfKind.replace(/ & /g, '-and-').replace(/ /g, '-')}-${toInputDate(new Date())}.pdf`,
+    })
+  }
+
+  // The report is rendered off screen only while the PDF is generated
+  useEffect(() => {
+    if (!exportJob) return
+
+    downloadElementAsPDF(pdfRef.current, exportJob.filename, {
+      pageNumbers: true,
+    })
+      .catch((err) => {
+        console.error('Could not generate PDF:', err)
+        setPdfError(
+          'Could not generate the PDF. Please try again or check the browser console.'
+        )
+      })
+      .finally(() => setExportJob(null))
+  }, [exportJob])
+
+  // ---------- Form ----------
 
   function openAddForm() {
     setEditingId(null)
@@ -269,13 +409,8 @@ export default function Members() {
     setPage(1)
   }
 
-  function handlePeriodChange(event) {
-    setPeriodId(event.target.value)
-    setPage(1)
-  }
-
-  function handleLevelChange(event) {
-    setLevelFilter(event.target.value)
+  function handleFilterChange(event) {
+    setFilter(event.target.value)
     setPage(1)
   }
 
@@ -318,6 +453,15 @@ export default function Members() {
           className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
           {error}
+        </div>
+      )}
+
+      {pdfError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {pdfError}
         </div>
       )}
 
@@ -420,6 +564,7 @@ export default function Members() {
             value={search}
             onChange={handleSearch}
             placeholder="Search name, email or phone..."
+            aria-label="Search name, email or phone"
             className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 sm:max-w-md"
           />
 
@@ -428,49 +573,55 @@ export default function Members() {
           </span>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-end gap-3">
-          <div>
-            <label
-              htmlFor="attendance-period"
-              className="mb-1 block text-xs text-slate-600"
-            >
-              Attendance period
-            </label>
-            <select
-              id="attendance-period"
-              value={periodId}
-              onChange={handlePeriodChange}
-              className={selectClass}
-            >
-              {PERIODS.map((period) => (
-                <option key={period.id} value={period.id}>
-                  {period.label}
-                </option>
-              ))}
-            </select>
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start gap-4">
+            <div>
+              <label
+                htmlFor="people-filter"
+                className="mb-1 block text-xs text-slate-600"
+              >
+                Show
+              </label>
+              <select
+                id="people-filter"
+                value={filter}
+                onChange={handleFilterChange}
+                className={selectClass}
+              >
+                <optgroup label="Category">
+                  {CATEGORY_FILTERS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Regularity (members only)">
+                  {LEVELS.map((level) => (
+                    <option key={level.id} value={level.id}>
+                      {level.label}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            <PeriodPicker
+              period={period}
+              variant="select"
+              idPrefix="members-period"
+              label="Attendance period"
+            />
           </div>
 
-          <div>
-            <label
-              htmlFor="regularity-filter"
-              className="mb-1 block text-xs text-slate-600"
-            >
-              Regularity (members)
-            </label>
-            <select
-              id="regularity-filter"
-              value={levelFilter}
-              onChange={handleLevelChange}
-              className={selectClass}
-            >
-              <option value="all">All levels</option>
-              {LEVELS.map((level) => (
-                <option key={level.id} value={level.id}>
-                  {level.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            disabled={!canDownload}
+            className="mt-5 flex items-center gap-2 rounded-lg bg-[#142D4E] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1d416c] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download size={18} />
+            {exportJob ? 'Generating PDF...' : 'Download PDF'}
+          </button>
         </div>
 
         {(servicesError || attendanceError) && (
@@ -494,13 +645,15 @@ export default function Members() {
         )}
 
         <p className="mt-3 text-xs text-slate-500">
-          {regularityReady && periodTotal === 0
-            ? 'No services were recorded in this period.'
-            : `Rate = services attended / ${
-                regularityReady ? periodTotal : 'the'
-              } service(s) held in the period. ${LEVELS.map(
-                (level) => `${level.label}: ${level.rule}`
-              ).join(' · ')}.`}
+          {!range.valid
+            ? 'Choose a valid period to see attendance and regularity.'
+            : regularityReady && periodTotal === 0
+              ? 'No services were recorded in this period.'
+              : `Rate = services attended / ${
+                  regularityReady ? periodTotal : 'the'
+                } service(s) held in the period. ${LEVELS.map(
+                  (level) => `${level.label}: ${level.rule}`
+                ).join(' · ')}.`}
           {regularityReady && periodTotal > 0 && periodTotal < 4
             ? ' Only a few services: the levels are only indicative.'
             : ''}
@@ -516,7 +669,7 @@ export default function Members() {
                 <th className="px-3 py-4">Category</th>
                 <th className="px-3 py-4">Status</th>
                 <th className="px-3 py-4">Attendance</th>
-                <th className="px-3 py-4">Regularity</th>
+                {showRegularity && <th className="px-3 py-4">Regularity</th>}
                 <th className="px-3 py-4">Actions</th>
               </tr>
             </thead>
@@ -525,7 +678,7 @@ export default function Members() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={columnCount}
                     className="px-3 py-10 text-center text-slate-500"
                   >
                     Loading people...
@@ -534,12 +687,10 @@ export default function Members() {
               ) : visibleRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={columnCount}
                     className="px-3 py-10 text-center text-slate-500"
                   >
-                    {search || levelFilter !== 'all'
-                      ? 'No matching people found.'
-                      : 'No people to display yet. Click "+ Add person" to begin.'}
+                    {emptyMessage}
                   </td>
                 </tr>
               ) : (
@@ -568,45 +719,52 @@ export default function Members() {
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-slate-600">
-                        {!regularityReady
-                          ? '…'
-                          : periodTotal === 0
-                            ? '—'
-                            : `${attended} / ${periodTotal}`}
+                        {regularityStatus === 'unavailable'
+                          ? '—'
+                          : regularityStatus === 'loading'
+                            ? '…'
+                            : periodTotal === 0
+                              ? '—'
+                              : `${attended} / ${periodTotal}`}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4">
-                        {!regularityReady ? (
-                          <span className="text-slate-400">…</span>
-                        ) : level ? (
-                          <>
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-medium ${level.badge}`}
-                            >
-                              {level.label}
-                            </span>
-                            <span className="ml-2 text-xs text-slate-500">
-                              {Math.round((attended / periodTotal) * 100)}%
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4">
-                        <button
-                          type="button"
-                          onClick={() => openEditForm(person)}
-                          className="mr-3 font-medium text-blue-600 hover:text-blue-800"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(person)}
-                          className="font-medium text-red-600 hover:text-red-800"
-                        >
-                          Delete
-                        </button>
+                      {showRegularity && (
+                        <td className="whitespace-nowrap px-3 py-4">
+                          {regularityStatus === 'loading' ? (
+                            <span className="text-slate-400">…</span>
+                          ) : level ? (
+                            <>
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-medium ${level.badge}`}
+                              >
+                                {level.label}
+                              </span>
+                              <span className="ml-2 text-xs text-slate-500">
+                                {Math.round((attended / periodTotal) * 100)}%
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                      )}
+                      <td className="whitespace-nowrap px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          <IconButton
+                            label={`Edit ${person.name}`}
+                            tooltip="Edit"
+                            onClick={() => openEditForm(person)}
+                          >
+                            <Pencil size={18} />
+                          </IconButton>
+                          <IconButton
+                            label={`Delete ${person.name}`}
+                            tooltip="Delete"
+                            tone="red"
+                            onClick={() => handleDelete(person)}
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -646,6 +804,25 @@ export default function Members() {
           </div>
         </div>
       </div>
+
+      {exportJob && (
+        // Off-screen copy used only to build the PDF
+        <div
+          aria-hidden="true"
+          style={{ position: 'fixed', left: '-10000px', top: 0, width: '780px' }}
+        >
+          <MembersPdfReport
+            ref={pdfRef}
+            title={pdfKind}
+            filterSummary={pdfFilterSummary}
+            periodLabel={pdfWithAttendance ? range.label : ''}
+            rows={pdfRows}
+            periodTotal={periodTotal}
+            showAttendance={pdfWithAttendance}
+            showRegularity={pdfWithAttendance && filter !== 'visitor'}
+          />
+        </div>
+      )}
     </section>
   )
 }

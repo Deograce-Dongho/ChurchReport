@@ -1,4 +1,3 @@
-
 import { ID, Query } from 'appwrite'
 
 import {
@@ -107,12 +106,8 @@ export async function updateMember(rowId, data) {
 
     validateEmail(cleanEmail)
 
-    if (cleanEmail) {
-      cleanData.email = cleanEmail
-    } else {
-      // Do not send an empty email value
-      delete cleanData.email
-    }
+    // null clears the stored email; leaving the key out would keep the old one
+    cleanData.email = cleanEmail || null
   }
 
   if ('phone' in cleanData) {

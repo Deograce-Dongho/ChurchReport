@@ -11,6 +11,9 @@ export function preparePDFCopy(original) {
   const nodes = [clone, ...clone.querySelectorAll('*')]
 
   nodes.forEach((node) => {
+    // Optional font size for an element (e.g. a dense table): data-pdf-font-size="11px"
+    const customFontSize = node.getAttribute('data-pdf-font-size')
+
     node.removeAttribute('class')
     node.removeAttribute('id')
 
@@ -144,14 +147,23 @@ export function preparePDFCopy(original) {
     if (node.tagName === 'DIV') {
       node.style.backgroundColor = 'transparent'
     }
+
+    if (customFontSize) {
+      node.style.fontSize = customFontSize
+    }
   })
 
   return clone
 }
 
 // Download a PDF from a sanitized, off-screen copy of `element`.
+// Options: { pageNumbers: true } writes "Page x / y" at the bottom of each page.
 // Throws if the PDF cannot be generated.
-export async function downloadElementAsPDF(element, filename) {
+export async function downloadElementAsPDF(
+  element,
+  filename,
+  { pageNumbers = false } = {}
+) {
   if (!element) throw new Error('Nothing to export.')
 
   const clone = preparePDFCopy(element)
@@ -173,7 +185,7 @@ export async function downloadElementAsPDF(element, filename) {
   document.body.appendChild(container)
 
   try {
-    await html2pdf()
+    let worker = html2pdf()
       .set({
         margin: 10,
         filename,
@@ -195,7 +207,29 @@ export async function downloadElementAsPDF(element, filename) {
         },
       })
       .from(clone)
-      .save()
+
+    if (pageNumbers) {
+      worker = worker
+        .toPdf()
+        .get('pdf')
+        .then((pdf) => {
+          const total = pdf.internal.getNumberOfPages()
+          const width = pdf.internal.pageSize.getWidth()
+          const height = pdf.internal.pageSize.getHeight()
+
+          pdf.setFontSize(9)
+          pdf.setTextColor(100)
+
+          for (let page = 1; page <= total; page += 1) {
+            pdf.setPage(page)
+            pdf.text(`Page ${page} / ${total}`, width / 2, height - 5, {
+              align: 'center',
+            })
+          }
+        })
+    }
+
+    await worker.save()
   } finally {
     container.remove()
   }

@@ -42,6 +42,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.1
         version: 6.1.2(vite@8.3.4(jiti@2.7.0))
+      node-appwrite:
+        specifier: ^30.0.1
+        version: 30.0.1
       oxlint:
         specifier: ^1.81.0
         version: 1.88.0
@@ -669,6 +672,9 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  node-appwrite@30.0.1:
+    resolution: {integrity: sha512-oDsuCZNLHpBswlJWzZW0ZcYU64gE5tuoX13InbFJ4BeHrwBEfxLhD68i83AEStfZVsuHpKM4QXumg7Qx1cp5Ag==}
+
   oxlint@1.88.0:
     resolution: {integrity: sha512-uIcFgw8BmqvFRGzH5+r7d2zJMEexwNSrEmM6WQNnGh3VkO0XYTEFoyxyNE6tjKMUib9Cue4XJA2DoWruO5D6aw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -771,6 +777,10 @@ packages:
   tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
+
+  undici@6.29.1:
+    resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
+    engines: {node: '>=18.17'}
 
   utrie@1.0.2:
     resolution: {integrity: sha512-1MLa5ouZiOmQzUbjbu9VmjLzn1QLXBhwpUa7kdLUQK+KQ5KA9I1vk5U4YHe/X2Ch7PYnJfWuWT+VbuxbGwljhw==}
@@ -1235,6 +1245,11 @@ snapshots:
 
   nanoid@3.3.20: {}
 
+  node-appwrite@30.0.1:
+    dependencies:
+      json-bigint: 1.0.0
+      undici: 6.29.1
+
   oxlint@1.88.0:
     optionalDependencies:
       '@oxlint/binding-android-arm-eabi': 1.88.0
@@ -1349,6 +1364,8 @@ snapshots:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
+
+  undici@6.29.1: {}
 
   utrie@1.0.2:
     dependencies:
