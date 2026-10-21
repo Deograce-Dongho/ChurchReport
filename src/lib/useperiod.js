@@ -28,7 +28,7 @@ export function usePeriod(defaultId = PERIODS[0].id) {
 
   const selectPeriod = useCallback(
     (id) => {
-      // Start the custom dates from the period that was active
+      // Start the custom dates from the period that was selected before, so that the user can tweak it.
       if (id === CUSTOM_PERIOD_ID && periodId !== CUSTOM_PERIOD_ID && range.valid) {
         setCustomStart(toInputDate(range.start))
         setCustomEnd(toInputDate(range.end))
