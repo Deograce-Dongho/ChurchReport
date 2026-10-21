@@ -1,12 +1,11 @@
-
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, Printer } from 'lucide-react'
-import html2pdf from 'html2pdf.js'
 
 import { getMembers } from '../lib/membersService'
 import { listServices } from '../lib/servicesService'
 import { getAttendanceForService } from '../lib/attendanceService'
+import logo from '../assets/logo.jpg'
 
 const CHURCH_NAME = import.meta.env.VITE_CHURCH_NAME || 'Church Name'
 
@@ -81,11 +80,12 @@ function AttendanceTable({ title, rows }) {
           {rows.map((row, index) => (
             <tr
               key={`${row.id}-${index}`}
-              className="border-b border-slate-100"
-              style={{ breakInside: 'avoid' }}
+              className="break-inside-avoid border-b border-slate-100"
             >
               <td className="py-1.5 text-slate-500">{index + 1}</td>
-              <td className="py-1.5 text-slate-900">{row.name}</td>
+              <td className="break-words py-1.5 pr-2 text-slate-900">
+                {row.name}
+              </td>
               <td className="py-1.5 text-slate-700">
                 {row.presenceType || 'Unknown'}
               </td>
@@ -95,151 +95,6 @@ function AttendanceTable({ title, rows }) {
       </table>
     </div>
   )
-}
-
-// Remove Tailwind classes from the PDF copy and apply safe inline styles.
-function preparePDFCopy(original) {
-  const clone = original.cloneNode(true)
-  const nodes = [clone, ...clone.querySelectorAll('*')]
-
-  nodes.forEach((node) => {
-    // Prevent Tailwind CSS v4 color functions from affecting the PDF.
-    node.removeAttribute('class')
-    node.removeAttribute('id')
-
-    node.style.setProperty('box-shadow', 'none', 'important')
-    node.style.setProperty('text-shadow', 'none', 'important')
-    node.style.setProperty('background-image', 'none', 'important')
-    node.style.setProperty('font-family', 'Arial, sans-serif', 'important')
-    node.style.setProperty('box-sizing', 'border-box', 'important')
-
-    if (node.tagName === 'ARTICLE') {
-      Object.assign(node.style, {
-        width: '760px',
-        maxWidth: 'none',
-        margin: '0',
-        padding: '32px',
-        border: '1px solid #e2e8f0',
-        borderRadius: '0',
-        backgroundColor: '#ffffff',
-        color: '#111827',
-        fontSize: '14px',
-        lineHeight: '1.5',
-      })
-    }
-
-    if (node.tagName === 'HEADER') {
-      Object.assign(node.style, {
-        borderBottom: '1px solid #cbd5e1',
-        paddingBottom: '20px',
-      })
-    }
-
-    if (node.tagName === 'H2') {
-      Object.assign(node.style, {
-        color: '#142D4E',
-        fontSize: '24px',
-        fontWeight: '700',
-        margin: '0',
-      })
-    }
-
-    if (node.tagName === 'H3') {
-      Object.assign(node.style, {
-        color: '#142D4E',
-        fontSize: '16px',
-        fontWeight: '700',
-        margin: '0 0 8px 0',
-      })
-    }
-
-    if (node.tagName === 'H4') {
-      Object.assign(node.style, {
-        color: '#1e293b',
-        fontSize: '14px',
-        fontWeight: '700',
-        margin: '16px 0 8px 0',
-      })
-    }
-
-    if (node.tagName === 'P') {
-      Object.assign(node.style, {
-        color: '#334155',
-        margin: '8px 0',
-        whiteSpace: 'pre-wrap',
-      })
-    }
-
-    if (node.tagName === 'DL') {
-      Object.assign(node.style, {
-        display: 'grid',
-        gridTemplateColumns: '128px 1fr',
-        rowGap: '4px',
-        margin: '8px 0 0 0',
-      })
-    }
-
-    if (node.tagName === 'DT') {
-      node.style.color = '#64748b'
-    }
-
-    if (node.tagName === 'DD') {
-      node.style.color = '#111827'
-      node.style.margin = '0'
-    }
-
-    if (node.tagName === 'TABLE') {
-      Object.assign(node.style, {
-        width: '100%',
-        borderCollapse: 'collapse',
-        textAlign: 'left',
-        fontSize: '13px',
-        marginTop: '8px',
-      })
-    }
-
-    if (node.tagName === 'TH') {
-      Object.assign(node.style, {
-        color: '#475569',
-        fontWeight: '600',
-        padding: '8px 4px',
-        borderBottom: '1px solid #cbd5e1',
-      })
-    }
-
-    if (node.tagName === 'TD') {
-      Object.assign(node.style, {
-        color: '#334155',
-        padding: '6px 4px',
-        borderBottom: '1px solid #e2e8f0',
-      })
-    }
-
-    if (node.tagName === 'FOOTER') {
-      Object.assign(node.style, {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-end',
-        gap: '24px',
-        marginTop: '40px',
-        paddingTop: '16px',
-        borderTop: '1px solid #cbd5e1',
-        color: '#64748b',
-        fontSize: '11px',
-        breakInside: 'avoid',
-      })
-    }
-
-    if (node.tagName === 'SPAN') {
-      node.style.color = '#64748b'
-    }
-
-    if (node.tagName === 'DIV') {
-      node.style.backgroundColor = 'transparent'
-    }
-  })
-
-  return clone
 }
 
 export default function PrintReport() {
@@ -366,69 +221,41 @@ export default function PrintReport() {
     (person) => person.presenceType === 'Online'
   ).length
 
-  // Download a PDF from a sanitized copy of the report.
+  // Download the report as a PDF made of real text (not an image).
   async function handleDownloadPDF() {
-    const element = printAreaRef.current
-
-    if (!element || !service || reportLoading || downloading) return
+    if (!service || reportLoading || downloading) return
 
     setError('')
     setDownloading(true)
 
-    let temporaryContainer
-
     try {
-      const clone = preparePDFCopy(element)
+      // jsPDF is only downloaded when a PDF is requested
+      const { downloadServiceReportPdf } = await import('../lib/pdf/downloads')
 
-      temporaryContainer = document.createElement('div')
-      Object.assign(temporaryContainer.style, {
-        position: 'fixed',
-        left: '-10000px',
-        top: '0',
-        width: '780px',
-        padding: '0',
-        margin: '0',
-        backgroundColor: '#ffffff',
-        color: '#111827',
-        zIndex: '-1',
-      })
-
-      temporaryContainer.appendChild(clone)
-      document.body.appendChild(temporaryContainer)
-
-      await html2pdf()
-        .set({
-          margin: 10,
-          filename: `Sunday-Report-${fileDate(service.service_date)}.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            backgroundColor: '#ffffff',
-            logging: false,
-            useCORS: true,
+      await downloadServiceReportPdf(
+        {
+          dateLong: formatLongDate(service.service_date),
+          preacher: service.preacher_name,
+          sermonTitle: service.sermon_title,
+          keyPoints: service.sermon_key_points,
+          summary: {
+            total: attendees.length,
+            inPerson: inPersonCount,
+            online: onlineCount,
+            members: memberRows.length,
+            visitors: visitorRows.length,
           },
-          jsPDF: {
-            unit: 'mm',
-            format: 'a4',
-            orientation: 'portrait',
-          },
-          pagebreak: {
-            mode: ['css', 'legacy'],
-            avoid: ['tr', 'footer'],
-          },
-        })
-        .from(clone)
-        .save()
+          memberRows,
+          visitorRows,
+        },
+        `Sunday-Report-${fileDate(service.service_date)}.pdf`
+      )
     } catch (err) {
       console.error('Could not generate PDF:', err)
       setError(
         'Could not generate the PDF. Please try again or check the browser console.'
       )
     } finally {
-      if (temporaryContainer?.parentNode) {
-        temporaryContainer.parentNode.removeChild(temporaryContainer)
-      }
-
       setDownloading(false)
     }
   }
@@ -453,9 +280,9 @@ export default function PrintReport() {
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4 print:hidden">
-        <div>
-          <h1 className="text-2xl font-bold text-[#142D4E]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between print:hidden">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-brand-900">
             Print Report
           </h1>
           <p className="mt-1 text-slate-500">
@@ -463,8 +290,8 @@ export default function PrintReport() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="w-full sm:w-auto">
             <label
               htmlFor="service-select"
               className="mb-1 block text-xs text-slate-600"
@@ -477,7 +304,7 @@ export default function PrintReport() {
               value={selectedId}
               onChange={(event) => setSelectedId(event.target.value)}
               disabled={loading || services.length === 0 || downloading}
-              className="w-72 max-w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-blue-600 disabled:opacity-60"
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-base outline-none focus:border-brand-600 disabled:opacity-60 sm:w-72 sm:text-sm"
             >
               {services.length === 0 && (
                 <option value="">No reports yet</option>
@@ -491,25 +318,27 @@ export default function PrintReport() {
             </select>
           </div>
 
-          <button
-            type="button"
-            onClick={handleDownloadPDF}
-            disabled={!service || busy || downloading}
-            className="flex items-center gap-2 rounded-lg bg-[#142D4E] px-4 py-3 font-medium text-white hover:bg-[#1d416c] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Download size={18} />
-            {downloading ? 'Generating PDF...' : 'Download PDF'}
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              disabled={!service || busy || downloading}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-900 px-4 py-3 font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              <Download size={18} />
+              {downloading ? 'Generating PDF...' : 'Download PDF'}
+            </button>
 
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={!service || busy || downloading}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Printer size={18} />
-            Print report
-          </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              disabled={!service || busy || downloading}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              <Printer size={18} />
+              Print report
+            </button>
+          </div>
         </div>
       </div>
 
@@ -527,44 +356,58 @@ export default function PrintReport() {
           Loading reports...
         </p>
       ) : !service ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 print:hidden">
+        <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500 sm:p-8 print:hidden">
           No saved reports yet.{' '}
-          <Link to="/sunday-report" className="font-medium text-blue-600">
+          <Link to="/sunday-report" className="font-medium text-brand-600 underline">
             Create the first Sunday report
           </Link>
           .
         </p>
       ) : (
+        // Preview and browser print. The downloaded PDF is built separately,
+        // as text (see src/lib/pdf/serviceReportPdf.js): keep both in sync.
         <article
           ref={printAreaRef}
           id="print-area"
-          className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-8 text-slate-900"
+          className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-4 text-slate-900 sm:p-8"
         >
-          <header className="border-b border-slate-300 pb-5">
-            <h2 className="text-2xl font-bold text-[#142D4E]">
-              {CHURCH_NAME}
-            </h2>
-            <p className="mt-1 text-slate-600">Sunday Service Report</p>
+          <header className="flex items-center gap-4 border-b border-slate-300 pb-5">
+            <img
+              src={logo}
+              alt=""
+              className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16"
+            />
+
+            <div className="min-w-0">
+              <h2 className="break-words text-xl font-bold text-brand-900 sm:text-2xl">
+                {CHURCH_NAME}
+              </h2>
+              <p className="mt-1 text-slate-600">Sunday Service Report</p>
+            </div>
           </header>
 
           <div className="mt-5">
             <h3 className="font-semibold">Service information</h3>
 
-            <dl className="mt-2 grid grid-cols-[8rem_1fr] gap-y-1 text-sm">
+            <dl className="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
               <dt className="text-slate-500">Date</dt>
               <dd>{formatLongDate(service.service_date)}</dd>
 
               <dt className="text-slate-500">Preacher</dt>
-              <dd>{service.preacher_name || 'Not specified'}</dd>
+              <dd className="break-words">
+                {service.preacher_name || 'Not specified'}
+              </dd>
 
               <dt className="text-slate-500">Sermon title</dt>
-              <dd>{service.sermon_title || 'Not specified'}</dd>
+              <dd className="break-words">
+                {service.sermon_title || 'Not specified'}
+              </dd>
             </dl>
           </div>
 
           <div className="mt-5">
             <h3 className="font-semibold">Sermon key points</h3>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">
               {service.sermon_key_points?.trim() || 'No key points recorded.'}
             </p>
           </div>
@@ -577,7 +420,7 @@ export default function PrintReport() {
                 Loading attendance...
               </p>
             ) : (
-              <dl className="mt-2 grid grid-cols-[8rem_1fr] gap-y-1 text-sm">
+              <dl className="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
                 <dt className="text-slate-500">Total</dt>
                 <dd className="font-semibold">{attendees.length}</dd>
 
@@ -613,15 +456,12 @@ export default function PrintReport() {
             </div>
           )}
 
-          <footer
-            className="mt-10 flex items-end justify-between gap-6 border-t border-slate-300 pt-4 text-xs text-slate-500"
-            style={{ breakInside: 'avoid' }}
-          >
+          <footer className="mt-10 flex break-inside-avoid flex-wrap items-end justify-between gap-6 border-t border-slate-300 pt-4 text-xs text-slate-500">
             <span>
               Generated on {formatShortDate(new Date().toISOString())}
             </span>
 
-            <span className="w-56 border-b border-slate-400 pb-6 text-right">
+            <span className="w-56 max-w-full border-b border-slate-400 pb-6 text-right">
               Secretary&apos;s signature
             </span>
           </footer>
