@@ -5,12 +5,14 @@ import {
 } from '../lib/periods'
 
 const inputClass =
-  'rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 disabled:opacity-60'
+  'min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand-600 disabled:opacity-60 sm:text-sm'
 
+// Two date fields. They sit side by side when there is room and wrap onto
+// their own lines on a narrow screen, never wider than their container.
 function CustomDates({ period, disabled, idPrefix }) {
   return (
     <div className="flex flex-wrap items-end gap-3">
-      <div>
+      <div className="min-w-0 flex-1 basis-36">
         <label
           htmlFor={`${idPrefix}-start`}
           className="mb-1 block text-xs text-slate-600"
@@ -28,7 +30,7 @@ function CustomDates({ period, disabled, idPrefix }) {
         />
       </div>
 
-      <div>
+      <div className="min-w-0 flex-1 basis-36">
         <label
           htmlFor={`${idPrefix}-end`}
           className="mb-1 block text-xs text-slate-600"
@@ -73,9 +75,9 @@ export default function PeriodPicker({
 
   if (variant === 'select') {
     return (
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
+      <div className="min-w-0 space-y-3">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="w-full sm:w-auto">
             <label
               htmlFor={`${idPrefix}-select`}
               className="mb-1 block text-xs text-slate-600"
@@ -99,11 +101,13 @@ export default function PeriodPicker({
           </div>
 
           {period.isCustom && (
-            <CustomDates
-              period={period}
-              disabled={disabled}
-              idPrefix={idPrefix}
-            />
+            <div className="min-w-0 sm:w-auto">
+              <CustomDates
+                period={period}
+                disabled={disabled}
+                idPrefix={idPrefix}
+              />
+            </div>
           )}
         </div>
 
@@ -113,14 +117,14 @@ export default function PeriodPicker({
   }
 
   const chipClass = (active) =>
-    `rounded-full border px-3 py-1.5 text-xs font-medium disabled:opacity-60 ${
+    `min-h-11 rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60 ${
       active
-        ? 'border-[#142D4E] bg-[#142D4E] text-white'
+        ? 'border-brand-900 bg-brand-900 text-white'
         : 'border-slate-300 text-slate-700 hover:bg-slate-50'
     }`
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       <div role="group" aria-label={label} className="flex flex-wrap gap-2">
         {PERIODS.map((item) => (
           <button
@@ -147,7 +151,13 @@ export default function PeriodPicker({
       </div>
 
       {period.isCustom && (
-        <CustomDates period={period} disabled={disabled} idPrefix={idPrefix} />
+        <div className="max-w-md">
+          <CustomDates
+            period={period}
+            disabled={disabled}
+            idPrefix={idPrefix}
+          />
+        </div>
       )}
 
       {error}

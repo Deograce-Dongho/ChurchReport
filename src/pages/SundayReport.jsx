@@ -29,6 +29,16 @@ function todayLocal() {
   return `${year}-${month}-${day}`
 }
 
+// Fields are at least 44 px tall and use 16 px text on a phone (iOS zooms
+// into smaller text when a field gets the focus).
+const inputClass =
+  'min-h-11 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-4 py-3 text-base text-gray-800 outline-none focus:border-brand-600 disabled:opacity-60 sm:text-sm'
+
+const smallInputClass =
+  'min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-base text-gray-800 outline-none focus:border-brand-600 disabled:bg-gray-50 disabled:text-gray-500 sm:text-sm'
+
+const labelClass = 'mb-2 block text-sm font-medium text-gray-700'
+
 export default function SundayReport() {
   // Service information
   const [serviceDate, setServiceDate] = useState(todayLocal)
@@ -66,14 +76,6 @@ export default function SundayReport() {
   const addingRef = useRef(false)
 
   const busy = saving || adding || membersLoading || reportLoading
-
-  const inputClass =
-    'w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-blue-600 disabled:opacity-60'
-
-  const smallInputClass =
-    'rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-400'
-
-  const labelClass = 'mb-2 block text-sm font-medium text-gray-700'
 
   function showMessage(text, type = 'info') {
     setMessage(text)
@@ -388,20 +390,20 @@ export default function SundayReport() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Sunday Report</h1>
+        <h1 className="text-2xl font-bold text-brand-900">Sunday Report</h1>
         <p className="mt-1 text-sm text-gray-500">
           Record the details of your Sunday service.
         </p>
       </div>
 
       {reportLoading && (
-        <p className="rounded-lg bg-blue-50 p-4 text-sm text-blue-900">
+        <p className="rounded-lg bg-brand-50 p-4 text-sm text-brand-900">
           Loading the report for this date...
         </p>
       )}
 
       {existingServiceId && !reportLoading && (
-        <p className="rounded-lg bg-blue-50 p-4 text-sm text-blue-900">
+        <p className="rounded-lg bg-brand-50 p-4 text-sm text-brand-900">
           A report already exists for this date. You are editing it.
         </p>
       )}
@@ -411,13 +413,13 @@ export default function SundayReport() {
         onKeyDown={blockEnterSubmit}
         className="space-y-6"
       >
-        <section className="rounded-xl border border-gray-200 bg-white p-6">
-          <h2 className="mb-5 text-lg font-semibold text-gray-900">
+        <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+          <h2 className="mb-5 text-lg font-semibold text-brand-900">
             Service Information
           </h2>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div className="min-w-0">
               <label htmlFor="service-date" className={labelClass}>
                 Service Date
               </label>
@@ -432,7 +434,7 @@ export default function SundayReport() {
               />
             </div>
 
-            <div>
+            <div className="min-w-0">
               <label htmlFor="preacher" className={labelClass}>
                 Preacher's Name
               </label>
@@ -447,7 +449,7 @@ export default function SundayReport() {
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div className="min-w-0 sm:col-span-2">
               <label htmlFor="sermon-title" className={labelClass}>
                 Sermon Title
               </label>
@@ -462,7 +464,7 @@ export default function SundayReport() {
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div className="min-w-0 sm:col-span-2">
               <label htmlFor="key-points" className={labelClass}>
                 Key Points
               </label>
@@ -479,10 +481,10 @@ export default function SundayReport() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-gray-200 bg-white p-6">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+        <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-brand-900">
                 Attendance
               </h2>
               <p className="mt-1 text-sm text-gray-500">
@@ -491,11 +493,11 @@ export default function SundayReport() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div
                 role="group"
                 aria-label="Filter by category"
-                className="flex overflow-hidden rounded-lg border border-gray-200"
+                className="flex w-full overflow-hidden rounded-lg border border-gray-200 sm:w-auto"
               >
                 {FILTERS.map((item) => (
                   <button
@@ -503,9 +505,9 @@ export default function SundayReport() {
                     type="button"
                     onClick={() => setFilter(item.id)}
                     aria-pressed={filter === item.id}
-                    className={`px-3 py-2 text-sm ${
+                    className={`min-h-11 flex-1 px-4 py-2 text-sm sm:flex-none ${
                       filter === item.id
-                        ? 'bg-blue-900 text-white'
+                        ? 'bg-brand-900 text-white'
                         : 'bg-white text-gray-700 hover:bg-gray-50'
                     }`}
                   >
@@ -514,10 +516,10 @@ export default function SundayReport() {
                 ))}
               </div>
 
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search
                   size={16}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
                 />
                 <input
                   type="search"
@@ -525,7 +527,7 @@ export default function SundayReport() {
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search a name..."
                   aria-label="Search a name"
-                  className={`${smallInputClass} w-48 pl-9`}
+                  className={`${smallInputClass} w-full pl-9 sm:w-48`}
                 />
               </div>
             </div>
@@ -535,10 +537,16 @@ export default function SundayReport() {
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 text-gray-500">
                 <tr>
-                  <th className="w-20 px-4 py-3 font-medium">Present</th>
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Category</th>
-                  <th className="px-4 py-3 font-medium">Attendance type</th>
+                  <th className="w-14 px-2 py-3 font-medium sm:w-20 sm:px-4">
+                    Present
+                  </th>
+                  <th className="px-2 py-3 font-medium sm:px-4">Name</th>
+                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
+                    Category
+                  </th>
+                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
+                    Attendance type
+                  </th>
                 </tr>
               </thead>
 
@@ -568,58 +576,75 @@ export default function SundayReport() {
                     const present = Object.hasOwn(selection, person.$id)
                     const isVisitor = person.person_type === 'visitor'
 
+                    const presenceSelect = (
+                      <select
+                        value={selection[person.$id] ?? 'In person'}
+                        onChange={(e) =>
+                          changePresenceType(person.$id, e.target.value)
+                        }
+                        disabled={!present || busy}
+                        aria-label={`Attendance type for ${person.name}`}
+                        className={smallInputClass}
+                      >
+                        {PRESENCE_TYPES.map((type) => (
+                          <option key={type}>{type}</option>
+                        ))}
+                      </select>
+                    )
+
+                    const categoryBadge = (
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs ${
+                          isVisitor
+                            ? 'bg-amber-50 text-amber-800'
+                            : 'bg-brand-50 text-brand-800'
+                        }`}
+                      >
+                        {isVisitor ? 'Visitor' : 'Member'}
+                      </span>
+                    )
+
                     return (
                       <tr
                         key={person.$id}
-                        className={present ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                        className={present ? 'bg-brand-50' : 'hover:bg-gray-50'}
                       >
-                        <td className="px-4 py-3">
-                          <input
-                            id={`present-${person.$id}`}
-                            type="checkbox"
-                            checked={present}
-                            onChange={() => togglePresent(person.$id)}
-                            disabled={busy}
-                            aria-label={`${person.name} was present`}
-                            className="h-5 w-5 cursor-pointer accent-blue-900"
-                          />
-                        </td>
-
-                        <td className="px-4 py-3 font-medium text-gray-800">
-                          <label
-                            htmlFor={`present-${person.$id}`}
-                            className="block cursor-pointer"
-                          >
-                            {person.name}
+                        <td className="px-2 py-1 align-top sm:px-4 sm:align-middle">
+                          <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
+                            <input
+                              id={`present-${person.$id}`}
+                              type="checkbox"
+                              checked={present}
+                              onChange={() => togglePresent(person.$id)}
+                              disabled={busy}
+                              aria-label={`${person.name} was present`}
+                              className="h-5 w-5 cursor-pointer accent-brand-900"
+                            />
                           </label>
                         </td>
 
-                        <td className="px-4 py-3">
-                          <span
-                            className={`rounded-full px-2 py-1 text-xs ${
-                              isVisitor
-                                ? 'bg-amber-50 text-amber-800'
-                                : 'bg-blue-50 text-blue-800'
-                            }`}
+                        <td className="px-2 py-2 font-medium text-gray-800 sm:px-4 sm:py-3">
+                          <label
+                            htmlFor={`present-${person.$id}`}
+                            className="block min-h-6 cursor-pointer break-words"
                           >
-                            {isVisitor ? 'Visitor' : 'Member'}
-                          </span>
+                            {person.name}
+                          </label>
+
+                          {/* On a phone the category and the attendance type
+                              sit under the name instead of in their own columns */}
+                          <div className="mt-2 space-y-2 sm:hidden">
+                            <div>{categoryBadge}</div>
+                            <div className="max-w-[10rem]">{presenceSelect}</div>
+                          </div>
                         </td>
 
-                        <td className="px-4 py-3">
-                          <select
-                            value={selection[person.$id] ?? 'In person'}
-                            onChange={(e) =>
-                              changePresenceType(person.$id, e.target.value)
-                            }
-                            disabled={!present || busy}
-                            aria-label={`Attendance type for ${person.name}`}
-                            className={smallInputClass}
-                          >
-                            {PRESENCE_TYPES.map((type) => (
-                              <option key={type}>{type}</option>
-                            ))}
-                          </select>
+                        <td className="hidden px-4 py-3 sm:table-cell">
+                          {categoryBadge}
+                        </td>
+
+                        <td className="hidden px-4 py-3 sm:table-cell">
+                          {presenceSelect}
                         </td>
                       </tr>
                     )
@@ -638,8 +663,8 @@ export default function SundayReport() {
               present.
             </p>
 
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <div className="min-w-[12rem] flex-1">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_auto_auto_auto] lg:items-end">
+              <div className="min-w-0 sm:col-span-2 lg:col-span-1">
                 <label htmlFor="new-name" className="mb-1 block text-xs text-gray-600">
                   Full name
                 </label>
@@ -657,7 +682,7 @@ export default function SundayReport() {
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label htmlFor="new-category" className="mb-1 block text-xs text-gray-600">
                   Category
                 </label>
@@ -666,14 +691,14 @@ export default function SundayReport() {
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
                   disabled={busy}
-                  className={smallInputClass}
+                  className={`${smallInputClass} w-full`}
                 >
                   <option value="visitor">Visitor</option>
                   <option value="member">Member</option>
                 </select>
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label htmlFor="new-presence" className="mb-1 block text-xs text-gray-600">
                   Attendance type
                 </label>
@@ -682,7 +707,7 @@ export default function SundayReport() {
                   value={newPresence}
                   onChange={(e) => setNewPresence(e.target.value)}
                   disabled={busy}
-                  className={smallInputClass}
+                  className={`${smallInputClass} w-full`}
                 >
                   {PRESENCE_TYPES.map((type) => (
                     <option key={type}>{type}</option>
@@ -694,7 +719,7 @@ export default function SundayReport() {
                 type="button"
                 onClick={addPerson}
                 disabled={busy}
-                className="flex items-center gap-2 rounded-lg bg-blue-900 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-900 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 lg:col-span-1"
               >
                 <UserPlus size={16} />
                 {adding ? 'Adding...' : 'Add person'}
@@ -706,23 +731,23 @@ export default function SundayReport() {
         {message && (
           <p
             role="status"
-            className={`rounded-lg p-4 text-sm ${
+            className={`break-words rounded-lg p-4 text-sm ${
               messageType === 'error'
                 ? 'bg-red-50 text-red-800'
                 : messageType === 'success'
                   ? 'bg-green-50 text-green-800'
-                  : 'bg-blue-50 text-blue-900'
+                  : 'bg-brand-50 text-brand-900'
             }`}
           >
             {message}
           </p>
         )}
 
-        <div className="flex justify-end">
+        <div className="flex sm:justify-end">
           <button
             type="submit"
             disabled={busy}
-            className="flex items-center gap-2 rounded-lg bg-blue-900 px-5 py-3 font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-900 px-5 py-3 font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             <Save size={18} />
             {saving ? 'Saving report...' : 'Save report'}

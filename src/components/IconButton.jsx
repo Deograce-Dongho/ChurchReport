@@ -1,5 +1,5 @@
 const TONES = {
-  blue: 'text-blue-600 hover:bg-blue-50',
+  brand: 'text-brand-600 hover:bg-brand-50',
   red: 'text-red-600 hover:bg-red-50',
 }
 
@@ -14,7 +14,7 @@ export default function IconButton({
   label,
   tooltip,
   onClick,
-  tone = 'blue',
+  tone = 'brand',
   disabled = false,
   children,
 }) {
@@ -25,7 +25,7 @@ export default function IconButton({
         onClick={onClick}
         disabled={disabled}
         aria-label={label}
-        className={`peer inline-flex h-11 w-11 items-center justify-center rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50 ${TONES[tone] ?? TONES.blue}`}
+        className={`peer inline-flex h-11 w-11 items-center justify-center rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:opacity-50 ${TONES[tone] ?? TONES.brand}`}
       >
         {children}
       </button>

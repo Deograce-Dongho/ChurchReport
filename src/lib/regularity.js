@@ -2,7 +2,7 @@
 // Rate = services attended / services held in the selected period.
 export const LEVELS = [
   { id: 'faithful', label: 'Faithful', rule: '75% or more', badge: 'bg-green-100 text-green-800' },
-  { id: 'regular', label: 'Regular', rule: '50 to 74%', badge: 'bg-blue-100 text-blue-800' },
+  { id: 'regular', label: 'Regular', rule: '50 to 74%', badge: 'bg-brand-100 text-brand-800' },
   { id: 'occasional', label: 'Occasional', rule: '25 to 49%', badge: 'bg-amber-100 text-amber-800' },
   { id: 'rare', label: 'Rare', rule: 'Less than 25%', badge: 'bg-orange-100 text-orange-800' },
   { id: 'absent', label: 'Never present', rule: '0%', badge: 'bg-red-100 text-red-800' },

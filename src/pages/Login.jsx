@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { Church } from 'lucide-react'
 
 import { useAuth } from '../lib/AuthContext'
+import logo from '../assets/logo.jpg'
 
 function friendlyError(error) {
   if (error?.code === 401 || error?.code === 400) {
@@ -16,6 +16,9 @@ function friendlyError(error) {
   }
   return error?.message || 'Could not sign in. Please try again.'
 }
+
+const inputClass =
+  'min-h-11 w-full rounded-lg border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100 disabled:opacity-60 sm:text-sm'
 
 export default function Login() {
   const { user, loading, login } = useAuth()
@@ -50,11 +53,15 @@ export default function Login() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#F7F9FC] p-6">
-      <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+    <main className="flex min-h-dvh items-center justify-center bg-surface p-4 sm:p-6">
+      <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Church size={42} className="text-[#142D4E]" />
-          <h1 className="mt-3 text-2xl font-bold text-[#142D4E]">
+          <img
+            src={logo}
+            alt=""
+            className="h-24 w-24 object-contain sm:h-28 sm:w-28"
+          />
+          <h1 className="mt-3 text-2xl font-bold text-brand-900">
             ChurchReport
           </h1>
           <p className="mt-2 text-sm text-slate-500">
@@ -64,7 +71,10 @@ export default function Login() {
 
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="email" className="mb-2 block text-sm font-medium">
+            <label
+              htmlFor="email"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
               Email address
             </label>
             <input
@@ -76,12 +86,15 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={submitting}
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-2 block text-sm font-medium">
+            <label
+              htmlFor="password"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
               Password
             </label>
             <input
@@ -93,7 +106,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={submitting}
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+              className={inputClass}
             />
           </div>
 
@@ -109,7 +122,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={submitting || loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-11 w-full rounded-lg bg-brand-600 px-4 py-3 font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? 'Signing in...' : 'Sign in'}
           </button>

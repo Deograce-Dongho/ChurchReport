@@ -1,13 +1,44 @@
 @import "tailwindcss";
 
+/* ---------- Brand palette ----------
+   The colors ChurchReport has always used, completed into a full scale:
+   - #142D4E (deep navy)  : brand-900, sidebar, titles
+   - #025CA2 (logo blue)  : brand-600, buttons and links
+   - #7FD0EE (logo sky)   : brand-300, light accents
+   - #F7F9FC              : surface (page background)
+   - brand-50 / 100 / 200 : the Tailwind blue tints used for badges and hovers
+
+   Contrast on white: 500 = 4.6:1, 600 = 6.9:1, 700 = 9.0:1, 900 = 13.9:1.
+   Use 500 or darker for text; 300 and 400 are for fills and decoration. */
+@theme {
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #7fd0ee;
+  --color-brand-400: #38a3dc;
+  --color-brand-500: #0e7bc0;
+  --color-brand-600: #025ca2;
+  --color-brand-700: #014b84;
+  --color-brand-800: #1d416c;
+  --color-brand-900: #142d4e;
+  --color-brand-950: #0c1d35;
+
+  --color-accent: #7fd0ee;
+
+  /* Page background */
+  --color-surface: #f7f9fc;
+}
+
 :root {
   font-family: Inter, system-ui, sans-serif;
-  color: #142D4E;
-  background: #F7F9FC;
+  color: var(--color-brand-900);
+  background: var(--color-surface);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 * {
@@ -18,6 +49,41 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ---------- Keyboard focus ---------- */
+
+@layer base {
+  a:focus-visible,
+  button:focus-visible,
+  summary:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+  }
+}
+
+/* Form fields use "outline-none" for their border style; keep a visible
+   ring for keyboard users anyway. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 1px;
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ---------- Printing ---------- */
