@@ -117,14 +117,14 @@ export default function Dashboard() {
     return total / recentServices.length
   }, [ready, recentServices, attendanceById])
 
-  const cardClass = 'rounded-xl border border-slate-200 bg-white p-5'
+  const cardClass = 'min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5'
   const placeholder = loading ? '…' : '—'
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[#142D4E]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-brand-900">
             Welcome to ChurchReport
           </h1>
           <p className="mt-2 text-slate-500">
@@ -134,7 +134,7 @@ export default function Dashboard() {
 
         <Link
           to="/sunday-report"
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700"
+          className="flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto"
         >
           <Plus size={18} />
           New Sunday Report
@@ -155,11 +155,11 @@ export default function Dashboard() {
           role="alert"
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
-          <span>{attendanceError}</span>
+          <span className="min-w-0 break-words">{attendanceError}</span>
           <button
             type="button"
             onClick={retry}
-            className="rounded-lg border border-red-300 px-3 py-1.5 font-medium hover:bg-red-100"
+            className="min-h-11 rounded-lg border border-red-300 px-3 py-1.5 font-medium hover:bg-red-100"
           >
             Try again
           </button>
@@ -168,17 +168,17 @@ export default function Dashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <article className={cardClass}>
-          <CalendarDays size={24} className="text-blue-600" />
+          <CalendarDays size={24} className="text-brand-600" />
           <p className="mt-4 text-sm text-slate-500">Last service</p>
           {lastService ? (
             <>
-              <p className="mt-1 text-lg font-bold text-[#142D4E]">
+              <p className="mt-1 text-lg font-bold text-brand-900">
                 {formatShortDate(lastService.service_date)}
               </p>
-              <p className="mt-1 text-sm text-slate-700">
+              <p className="mt-1 break-words text-sm text-slate-700">
                 {lastService.sermon_title}
               </p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 break-words text-xs text-slate-500">
                 {lastService.preacher_name}
                 {lastTotal != null && ` · ${lastTotal} present`}
               </p>
@@ -191,9 +191,9 @@ export default function Dashboard() {
         </article>
 
         <article className={cardClass}>
-          <Users size={24} className="text-blue-600" />
+          <Users size={24} className="text-brand-600" />
           <p className="mt-4 text-sm text-slate-500">Members</p>
-          <p className="mt-1 text-2xl font-bold text-[#142D4E]">
+          <p className="mt-1 text-2xl font-bold text-brand-900">
             {loading || loadError ? placeholder : memberCount}
           </p>
           <p className="mt-1 text-xs text-slate-500">
@@ -202,9 +202,9 @@ export default function Dashboard() {
         </article>
 
         <article className={cardClass}>
-          <ChartNoAxesColumn size={24} className="text-blue-600" />
+          <ChartNoAxesColumn size={24} className="text-brand-600" />
           <p className="mt-4 text-sm text-slate-500">Average attendance</p>
-          <p className="mt-1 text-2xl font-bold text-[#142D4E]">
+          <p className="mt-1 text-2xl font-bold text-brand-900">
             {average != null ? numberFormat.format(average) : placeholder}
           </p>
           <p className="mt-1 text-xs text-slate-500">
@@ -215,15 +215,15 @@ export default function Dashboard() {
         </article>
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
         {shortcuts.map(({ title, description, path, icon: Icon }) => (
           <Link
             key={path}
             to={path}
-            className="rounded-xl border border-slate-200 bg-white p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+            className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-md sm:p-6"
           >
-            <Icon size={28} className="text-blue-600" />
-            <h2 className="mt-4 font-semibold text-[#142D4E]">{title}</h2>
+            <Icon size={28} className="text-brand-600" />
+            <h2 className="mt-4 font-semibold text-brand-900">{title}</h2>
             <p className="mt-2 text-sm text-slate-500">{description}</p>
           </Link>
         ))}
