@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Download, Pencil, Trash2 } from 'lucide-react'
 
 import {
@@ -12,10 +12,8 @@ import { useServicesAttendance } from '../lib/useServicesAttendance'
 import { usePeriod } from '../lib/usePeriod'
 import { servicesInRange, toInputDate } from '../lib/periods'
 import { LEVELS, LEVELS_BY_ID, getLevelId } from '../lib/regularity'
-import { downloadElementAsPDF } from '../lib/pdfExport'
 import IconButton from '../components/IconButton'
 import PeriodPicker from '../components/PeriodPicker'
-import MembersPdfReport from '../components/MembersPdfReport'
 
 const PAGE_SIZE = 25
 
@@ -37,6 +35,13 @@ const byName = (a, b) =>
   String(a.person.name ?? '').localeCompare(String(b.person.name ?? ''), undefined, {
     sensitivity: 'base',
   })
+
+// 44 px tall fields; 16 px text on a phone so iOS does not zoom in on focus
+const fieldClass =
+  'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand-600 sm:text-sm'
+
+const selectClass =
+  'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand-600 sm:w-auto sm:text-sm'
 
 export default function Members() {
   const [members, setMembers] = useState([])
@@ -62,9 +67,8 @@ export default function Members() {
   const [servicesError, setServicesError] = useState('')
 
   // PDF export
-  const [exportJob, setExportJob] = useState(null)
+  const [exporting, setExporting] = useState(false)
   const [pdfError, setPdfError] = useState('')
-  const pdfRef = useRef(null)
 
   async function loadMembers() {
     setLoading(true)
@@ -255,11 +259,6 @@ export default function Members() {
 
   const pdfWithAttendance = regularityReady && periodTotal > 0
 
-  const pdfRows = useMemo(
-    () => (exportJob ? [...filteredRows].sort(byName) : []),
-    [exportJob, filteredRows]
-  )
-
   const pdfFilterSummary = [
     `Category: ${pdfKind === 'Members & Visitors' ? 'Members and visitors' : pdfKind}`,
     levelSelected
@@ -272,35 +271,42 @@ export default function Members() {
 
   const canDownload =
     !loading &&
-    !exportJob &&
+    !exporting &&
     filteredRows.length > 0 &&
     regularityStatus !== 'loading'
 
-  function handleDownloadPDF() {
+  // The PDF holds every filtered row (not only the page of 25), as real text.
+  async function handleDownloadPDF() {
     if (!canDownload) return
 
     setPdfError('')
+    setExporting(true)
 
-    setExportJob({
-      filename: `${pdfKind.replace(/ & /g, '-and-').replace(/ /g, '-')}-${toInputDate(new Date())}.pdf`,
-    })
+    try {
+      // jsPDF is only downloaded when a PDF is requested
+      const { downloadMembersPdf } = await import('../lib/pdf/downloads')
+
+      await downloadMembersPdf(
+        {
+          title: pdfKind,
+          filterSummary: pdfFilterSummary,
+          periodLabel: pdfWithAttendance ? range.label : '',
+          rows: [...filteredRows].sort(byName),
+          periodTotal,
+          showAttendance: pdfWithAttendance,
+          showRegularity: pdfWithAttendance && filter !== 'visitor',
+        },
+        `${pdfKind.replace(/ & /g, '-and-').replace(/ /g, '-')}-${toInputDate(new Date())}.pdf`
+      )
+    } catch (err) {
+      console.error('Could not generate PDF:', err)
+      setPdfError(
+        'Could not generate the PDF. Please try again or check the browser console.'
+      )
+    } finally {
+      setExporting(false)
+    }
   }
-
-  // The report is rendered off screen only while the PDF is generated
-  useEffect(() => {
-    if (!exportJob) return
-
-    downloadElementAsPDF(pdfRef.current, exportJob.filename, {
-      pageNumbers: true,
-    })
-      .catch((err) => {
-        console.error('Could not generate PDF:', err)
-        setPdfError(
-          'Could not generate the PDF. Please try again or check the browser console.'
-        )
-      })
-      .finally(() => setExportJob(null))
-  }, [exportJob])
 
   // ---------- Form ----------
 
@@ -414,14 +420,63 @@ export default function Members() {
     setPage(1)
   }
 
-  const selectClass =
-    'rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600'
+  // ---------- Pieces shared by the cards (small screens) and the table ----------
+
+  function attendanceText(attended) {
+    if (regularityStatus === 'unavailable') return '—'
+    if (regularityStatus === 'loading') return '…'
+    if (periodTotal === 0) return '—'
+    return `${attended} / ${periodTotal}`
+  }
+
+  function regularityCell(level, attended) {
+    if (regularityStatus === 'loading') {
+      return <span className="text-slate-500">…</span>
+    }
+
+    if (!level) return <span className="text-slate-500">—</span>
+
+    return (
+      <>
+        <span
+          className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${level.badge}`}
+        >
+          {level.label}
+        </span>
+        <span className="ml-2 text-xs text-slate-500">
+          {Math.round((attended / periodTotal) * 100)}%
+        </span>
+      </>
+    )
+  }
+
+  function personActions(person) {
+    return (
+      <div className="flex items-center gap-1">
+        <IconButton
+          label={`Edit ${person.name}`}
+          tooltip="Edit"
+          onClick={() => openEditForm(person)}
+        >
+          <Pencil size={18} />
+        </IconButton>
+        <IconButton
+          label={`Delete ${person.name}`}
+          tooltip="Delete"
+          tone="red"
+          onClick={() => handleDelete(person)}
+        >
+          <Trash2 size={18} />
+        </IconButton>
+      </div>
+    )
+  }
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[#142D4E]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-brand-900">
             Members & Visitors
           </h1>
           <p className="mt-1 text-slate-500">
@@ -432,7 +487,7 @@ export default function Members() {
         <button
           type="button"
           onClick={openAddForm}
-          className="rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700"
+          className="min-h-11 w-full shrink-0 rounded-lg bg-brand-600 px-4 py-3 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto"
         >
           + Add person
         </button>
@@ -468,14 +523,14 @@ export default function Members() {
       {showForm && (
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-xl border border-slate-200 bg-white p-6"
+          className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"
         >
-          <h2 className="text-lg font-semibold text-[#142D4E]">
+          <h2 className="text-lg font-semibold text-brand-900">
             {editingId ? 'Edit person' : 'Add a person'}
           </h2>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-1 text-sm font-medium text-slate-700">
+            <label className="block min-w-0 space-y-1 text-sm font-medium text-slate-700">
               Full name *
               <input
                 name="name"
@@ -484,37 +539,37 @@ export default function Members() {
                 required
                 maxLength={255}
                 placeholder="Enter full name"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-600"
+                className={fieldClass}
               />
             </label>
 
-            <label className="space-y-1 text-sm font-medium text-slate-700">
+            <label className="block min-w-0 space-y-1 text-sm font-medium text-slate-700">
               Category *
               <select
                 name="person_type"
                 value={form.person_type}
                 onChange={handleChange}
                 required
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-blue-600"
+                className={fieldClass}
               >
                 <option value="member">Member</option>
                 <option value="visitor">Visitor</option>
               </select>
             </label>
 
-            <label className="space-y-1 text-sm font-medium text-slate-700">
+            <label className="block min-w-0 space-y-1 text-sm font-medium text-slate-700">
               Email
               <input
                 type="email"
                 name="email"
                 value={form.email}
                 onChange={handleChange}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-600"
+                className={fieldClass}
                 placeholder="name@example.com"
               />
             </label>
 
-            <label className="space-y-1 text-sm font-medium text-slate-700">
+            <label className="block min-w-0 space-y-1 text-sm font-medium text-slate-700">
               Phone
               <input
                 type="tel"
@@ -522,7 +577,7 @@ export default function Members() {
                 value={form.phone}
                 onChange={handleChange}
                 maxLength={30}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-600"
+                className={fieldClass}
                 placeholder="Phone number"
               />
             </label>
@@ -532,11 +587,11 @@ export default function Members() {
             Fields marked with * are required.
           </p>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="min-h-11 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
             >
               {saving
                 ? 'Saving...'
@@ -549,7 +604,7 @@ export default function Members() {
               type="button"
               onClick={closeForm}
               disabled={saving}
-              className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="min-h-11 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Cancel
             </button>
@@ -557,15 +612,16 @@ export default function Members() {
         </form>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        {/* Toolbar: stacked on a phone, in a row from `sm` / `lg` */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <input
             type="search"
             value={search}
             onChange={handleSearch}
             placeholder="Search name, email or phone..."
             aria-label="Search name, email or phone"
-            className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 sm:max-w-md"
+            className="min-h-11 w-full rounded-lg border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-600 sm:max-w-md sm:text-sm"
           />
 
           <span className="text-sm text-slate-500">
@@ -573,9 +629,9 @@ export default function Members() {
           </span>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
-          <div className="flex flex-wrap items-start gap-4">
-            <div>
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
+            <div className="w-full sm:w-auto">
               <label
                 htmlFor="people-filter"
                 className="mb-1 block text-xs text-slate-600"
@@ -617,10 +673,10 @@ export default function Members() {
             type="button"
             onClick={handleDownloadPDF}
             disabled={!canDownload}
-            className="mt-5 flex items-center gap-2 rounded-lg bg-[#142D4E] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1d416c] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto lg:mt-5"
           >
             <Download size={18} />
-            {exportJob ? 'Generating PDF...' : 'Download PDF'}
+            {exporting ? 'Generating PDF...' : 'Download PDF'}
           </button>
         </div>
 
@@ -629,14 +685,14 @@ export default function Members() {
             role="alert"
             className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
           >
-            <span>
+            <span className="min-w-0 break-words">
               Regularity could not be loaded: {servicesError || attendanceError}
             </span>
             {!servicesError && (
               <button
                 type="button"
                 onClick={retry}
-                className="rounded-lg border border-red-300 px-3 py-1.5 font-medium hover:bg-red-100"
+                className="min-h-11 rounded-lg border border-red-300 px-3 py-1.5 font-medium hover:bg-red-100"
               >
                 Try again
               </button>
@@ -644,7 +700,7 @@ export default function Members() {
           </div>
         )}
 
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 break-words text-xs text-slate-500">
           {!range.valid
             ? 'Choose a valid period to see attendance and regularity.'
             : regularityReady && periodTotal === 0
@@ -659,11 +715,88 @@ export default function Members() {
             : ''}
         </p>
 
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
+        {/* Small screens (< 768 px): one card per person */}
+        <ul className="mt-4 space-y-3 md:hidden">
+          {loading ? (
+            <li className="py-10 text-center text-sm text-slate-500">
+              Loading people...
+            </li>
+          ) : visibleRows.length === 0 ? (
+            <li className="py-10 text-center text-sm text-slate-500">
+              {emptyMessage}
+            </li>
+          ) : (
+            visibleRows.map(({ person, attended, levelId }) => {
+              const level = levelId ? LEVELS_BY_ID[levelId] : null
+
+              return (
+                <li
+                  key={person.$id}
+                  className="rounded-lg border border-slate-200 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words font-semibold text-brand-900">
+                        {person.name}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium capitalize text-brand-700">
+                          {person.person_type || 'member'}
+                        </span>
+                        <span className="text-xs text-slate-600">
+                          {person.status || 'active'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="-mr-2 -mt-1 shrink-0">
+                      {personActions(person)}
+                    </div>
+                  </div>
+
+                  <dl className="mt-3 grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+                    <dt className="text-slate-500">Email</dt>
+                    <dd className="min-w-0 break-words text-slate-700">
+                      {person.email || '—'}
+                    </dd>
+
+                    <dt className="text-slate-500">Phone</dt>
+                    <dd className="min-w-0 break-words text-slate-700">
+                      {person.phone || '—'}
+                    </dd>
+
+                    <dt className="text-slate-500">Attendance</dt>
+                    <dd className="text-slate-700">
+                      {attendanceText(attended)}
+                    </dd>
+
+                    {showRegularity && (
+                      <>
+                        <dt className="text-slate-500">Regularity</dt>
+                        <dd>{regularityCell(level, attended)}</dd>
+                      </>
+                    )}
+                  </dl>
+                </li>
+              )
+            })
+          )}
+        </ul>
+
+        {/* From 768 px: table; it scrolls inside its own box and the Name
+            column stays in place */}
+        <div
+          className="mt-4 hidden overflow-x-auto md:block"
+          tabIndex={0}
+          role="region"
+          aria-label="People table"
+        >
+          <table className="w-full min-w-[52rem] text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-3 py-4">Name</th>
+                <th className="sticky left-0 z-10 bg-slate-50 px-3 py-4 shadow-[1px_0_0_#e2e8f0]">
+                  Name
+                </th>
                 <th className="px-3 py-4">Email</th>
                 <th className="px-3 py-4">Phone</th>
                 <th className="px-3 py-4">Category</th>
@@ -698,8 +831,8 @@ export default function Members() {
                   const level = levelId ? LEVELS_BY_ID[levelId] : null
 
                   return (
-                    <tr key={person.$id} className="hover:bg-slate-50">
-                      <td className="whitespace-nowrap px-3 py-4 font-medium text-[#142D4E]">
+                    <tr key={person.$id} className="group hover:bg-slate-50">
+                      <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-4 font-medium text-brand-900 shadow-[1px_0_0_#e2e8f0] group-hover:bg-slate-50">
                         {person.name}
                       </td>
                       <td className="px-3 py-4 text-slate-600">
@@ -709,7 +842,7 @@ export default function Members() {
                         {person.phone || '—'}
                       </td>
                       <td className="px-3 py-4">
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium capitalize text-blue-700">
+                        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium capitalize text-brand-700">
                           {person.person_type || 'member'}
                         </span>
                       </td>
@@ -719,52 +852,15 @@ export default function Members() {
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-slate-600">
-                        {regularityStatus === 'unavailable'
-                          ? '—'
-                          : regularityStatus === 'loading'
-                            ? '…'
-                            : periodTotal === 0
-                              ? '—'
-                              : `${attended} / ${periodTotal}`}
+                        {attendanceText(attended)}
                       </td>
                       {showRegularity && (
                         <td className="whitespace-nowrap px-3 py-4">
-                          {regularityStatus === 'loading' ? (
-                            <span className="text-slate-400">…</span>
-                          ) : level ? (
-                            <>
-                              <span
-                                className={`rounded-full px-2.5 py-1 text-xs font-medium ${level.badge}`}
-                              >
-                                {level.label}
-                              </span>
-                              <span className="ml-2 text-xs text-slate-500">
-                                {Math.round((attended / periodTotal) * 100)}%
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
+                          {regularityCell(level, attended)}
                         </td>
                       )}
                       <td className="whitespace-nowrap px-3 py-2">
-                        <div className="flex items-center gap-1">
-                          <IconButton
-                            label={`Edit ${person.name}`}
-                            tooltip="Edit"
-                            onClick={() => openEditForm(person)}
-                          >
-                            <Pencil size={18} />
-                          </IconButton>
-                          <IconButton
-                            label={`Delete ${person.name}`}
-                            tooltip="Delete"
-                            tone="red"
-                            onClick={() => handleDelete(person)}
-                          >
-                            <Trash2 size={18} />
-                          </IconButton>
-                        </div>
+                        {personActions(person)}
                       </td>
                     </tr>
                   )
@@ -774,8 +870,8 @@ export default function Members() {
           </table>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-          <p className="text-sm text-slate-500">
+        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <p className="min-w-0 text-sm text-slate-500">
             Page {currentPage} of {totalPages}
             {filteredRows.length > 0 &&
               ` · Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(
@@ -789,7 +885,7 @@ export default function Members() {
               type="button"
               disabled={currentPage <= 1}
               onClick={() => setPage(currentPage - 1)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-h-11 flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
             >
               Previous
             </button>
@@ -797,32 +893,13 @@ export default function Members() {
               type="button"
               disabled={currentPage >= totalPages}
               onClick={() => setPage(currentPage + 1)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-h-11 flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
             >
               Next
             </button>
           </div>
         </div>
       </div>
-
-      {exportJob && (
-        // Off-screen copy used only to build the PDF
-        <div
-          aria-hidden="true"
-          style={{ position: 'fixed', left: '-10000px', top: 0, width: '780px' }}
-        >
-          <MembersPdfReport
-            ref={pdfRef}
-            title={pdfKind}
-            filterSummary={pdfFilterSummary}
-            periodLabel={pdfWithAttendance ? range.label : ''}
-            rows={pdfRows}
-            periodTotal={periodTotal}
-            showAttendance={pdfWithAttendance}
-            showRegularity={pdfWithAttendance && filter !== 'visitor'}
-          />
-        </div>
-      )}
     </section>
   )
 }
