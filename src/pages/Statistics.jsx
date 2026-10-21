@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download } from 'lucide-react'
 
@@ -6,9 +6,9 @@ import { getMembers } from '../lib/membersService'
 import { listServices } from '../lib/servicesService'
 import { useServicesAttendance } from '../lib/useServicesAttendance'
 import { usePeriod } from '../lib/usePeriod'
-import { downloadElementAsPDF } from '../lib/pdfExport'
 import { formatShortDate, servicesInRange, toInputDate } from '../lib/periods'
 import PeriodPicker from '../components/PeriodPicker'
+import logo from '../assets/logo.jpg'
 
 // Set VITE_CHURCH_NAME in .env (and in Vercel) to print your church name.
 const CHURCH_NAME = import.meta.env.VITE_CHURCH_NAME || 'Church Name'
@@ -28,8 +28,6 @@ export default function Statistics() {
 
   const [downloading, setDownloading] = useState(false)
   const [pdfError, setPdfError] = useState('')
-
-  const reportRef = useRef(null)
 
   // Load all services and people once
   useEffect(() => {
@@ -154,10 +152,12 @@ export default function Statistics() {
     setDownloading(true)
 
     try {
-      await downloadElementAsPDF(
-        reportRef.current,
-        `Statistics-${toInputDate(range.start)}-to-${toInputDate(range.end)}.pdf`,
-        { pageNumbers: true }
+      // jsPDF is only downloaded when a PDF is requested
+      const { downloadStatisticsPdf } = await import('../lib/pdf/downloads')
+
+      await downloadStatisticsPdf(
+        { periodLabel, stats },
+        `Statistics-${toInputDate(range.start)}-to-${toInputDate(range.end)}.pdf`
       )
     } catch (err) {
       console.error('Could not generate PDF:', err)
@@ -172,7 +172,7 @@ export default function Statistics() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-[#142D4E]">
+        <h1 className="text-2xl font-bold text-brand-900">
           Attendance Statistics
         </h1>
         <p className="mt-1 text-slate-500">
@@ -180,8 +180,8 @@ export default function Statistics() {
         </p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <PeriodPicker
             variant="chips"
             label="Period"
@@ -194,7 +194,7 @@ export default function Statistics() {
             type="button"
             onClick={handleDownloadPDF}
             disabled={!canDownload || downloading}
-            className="flex items-center gap-2 rounded-lg bg-[#142D4E] px-4 py-3 text-sm font-medium text-white hover:bg-[#1d416c] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-900 px-4 py-3 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             <Download size={18} />
             {downloading ? 'Generating PDF...' : 'Download PDF'}
@@ -225,11 +225,11 @@ export default function Statistics() {
           role="alert"
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
-          <span>{attendanceError}</span>
+          <span className="min-w-0 break-words">{attendanceError}</span>
           <button
             type="button"
             onClick={retry}
-            className="rounded-lg border border-red-300 px-3 py-1.5 font-medium hover:bg-red-100"
+            className="min-h-11 rounded-lg border border-red-300 px-3 py-1.5 font-medium hover:bg-red-100"
           >
             Try again
           </button>
@@ -243,36 +243,44 @@ export default function Statistics() {
           <p className="text-sm text-slate-500">Loading statistics...</p>
         )
       ) : !stats || stats.serviceCount === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+        <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500 sm:p-8">
           No services recorded between {periodLabel}.{' '}
-          <Link to="/sunday-report" className="font-medium text-blue-600">
+          <Link to="/sunday-report" className="font-medium text-brand-600 underline">
             Create a Sunday report
           </Link>
           .
         </p>
       ) : (
-        // This article is both the on-screen preview and the source of the PDF.
+        // On-screen preview. The downloaded PDF is built separately, as text
+        // (see src/lib/pdf/statisticsPdf.js): keep both in sync.
         <article
-          ref={reportRef}
-          className="mx-auto w-full max-w-3xl rounded-xl border border-slate-200 bg-white p-8 text-slate-900"
+          className="mx-auto w-full max-w-3xl rounded-xl border border-slate-200 bg-white p-4 text-slate-900 sm:p-8"
         >
-          <header className="border-b border-slate-300 pb-5">
-            <h2 className="text-2xl font-bold text-[#142D4E]">{CHURCH_NAME}</h2>
-            <p className="mt-1 text-slate-600">Attendance Statistics</p>
-            <p className="mt-1 text-sm text-slate-500">Period: {periodLabel}</p>
+          <header className="flex items-center gap-4 border-b border-slate-300 pb-5">
+            <img
+              src={logo}
+              alt=""
+              className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16"
+            />
+
+            <div className="min-w-0">
+              <h2 className="break-words text-xl font-bold text-brand-900 sm:text-2xl">
+                {CHURCH_NAME}
+              </h2>
+              <p className="mt-1 text-slate-600">Attendance Statistics</p>
+              <p className="mt-1 text-sm text-slate-500">Period: {periodLabel}</p>
+            </div>
           </header>
 
           <div className="mt-5">
             <h3 className="font-semibold">Summary</h3>
 
-            <dl className="mt-2 grid grid-cols-[8rem_1fr] gap-y-1 text-sm">
+            <dl className="mt-2 grid grid-cols-[7rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
               <dt className="text-slate-500">Services held</dt>
               <dd>{stats.serviceCount}</dd>
 
               <dt className="text-slate-500">Total attendances</dt>
-              <dd className="font-semibold" style={{ fontWeight: 700 }}>
-                {stats.totalAttendances}
-              </dd>
+              <dd className="font-semibold">{stats.totalAttendances}</dd>
 
               <dt className="text-slate-500">Average / service</dt>
               <dd>{numberFormat.format(stats.average)}</dd>
@@ -300,7 +308,12 @@ export default function Statistics() {
           <div className="mt-6">
             <h3 className="font-semibold">Attendance by service</h3>
 
-            <div className="overflow-x-auto">
+            <div
+              className="overflow-x-auto"
+              tabIndex={0}
+              role="region"
+              aria-label="Attendance by service table"
+            >
               <table className="mt-2 w-full min-w-[34rem] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-300 text-slate-600">
@@ -316,15 +329,8 @@ export default function Statistics() {
 
                 <tbody>
                   {stats.rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="border-b border-slate-100"
-                      style={{ breakInside: 'avoid' }}
-                    >
-                      <td
-                        className="py-1.5 pr-2 text-slate-700"
-                        style={{ whiteSpace: 'nowrap' }}
-                      >
+                    <tr key={row.id} className="border-b border-slate-100">
+                      <td className="whitespace-nowrap py-1.5 pr-2 text-slate-700">
                         {formatShortDate(row.date)}
                       </td>
                       <td className="py-1.5 pr-2 text-slate-700">{row.title}</td>
@@ -336,10 +342,7 @@ export default function Statistics() {
                     </tr>
                   ))}
 
-                  <tr
-                    className="font-semibold text-[#142D4E]"
-                    style={{ fontWeight: 700, breakInside: 'avoid' }}
-                  >
+                  <tr className="font-bold text-brand-900">
                     <td className="py-2 pr-2" colSpan={2}>
                       Total
                     </td>
@@ -354,10 +357,7 @@ export default function Statistics() {
             </div>
           </div>
 
-          <footer
-            className="mt-10 flex items-end justify-between gap-6 border-t border-slate-300 pt-4 text-xs text-slate-500"
-            style={{ breakInside: 'avoid' }}
-          >
+          <footer className="mt-10 flex items-end justify-between gap-6 border-t border-slate-300 pt-4 text-xs text-slate-500">
             <span>Generated on {formatShortDate(new Date())}</span>
           </footer>
         </article>
