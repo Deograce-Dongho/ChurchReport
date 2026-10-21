@@ -73,7 +73,7 @@ export default function DashboardLayout() {
       <Sidebar open={drawerOpen} onClose={closeDrawer} />
 
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-2 border-b border-slate-200 bg-white px-2 sm:px-4 lg:h-20 lg:px-8 print:hidden">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-2 bg-brand-600 px-2 text-white shadow-md sm:px-4 lg:h-20 lg:px-8 print:hidden">
           <div className="flex min-w-0 items-center gap-1 sm:gap-2">
             <button
               ref={menuButtonRef}
@@ -82,7 +82,7 @@ export default function DashboardLayout() {
               aria-label="Open navigation menu"
               aria-expanded={drawerOpen}
               aria-controls="app-sidebar"
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-brand-900 hover:bg-brand-50 lg:hidden"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white hover:bg-white/10 lg:hidden"
             >
               <Menu size={24} />
             </button>
@@ -90,22 +90,22 @@ export default function DashboardLayout() {
             <img
               src={logo}
               alt=""
-              className="h-9 w-9 shrink-0 object-contain lg:hidden"
+              className="h-9 w-9 shrink-0 rounded-md bg-white object-contain p-0.5 lg:hidden"
             />
 
-            <h2 className="truncate text-lg font-semibold text-brand-900 lg:text-xl">
+            <h2 className="truncate text-lg font-semibold text-white lg:text-xl">
               {title}
             </h2>
           </div>
 
           <div className="flex shrink-0 items-center gap-2 lg:gap-4">
-            <span className="hidden max-w-[16rem] truncate text-sm text-slate-500 md:inline">
+            <span className="hidden max-w-[16rem] truncate text-sm text-white/80 md:inline">
               {user?.email}
             </span>
             <button
               type="button"
               onClick={logout}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-white/40 px-3 text-sm font-medium text-white hover:bg-white/10"
             >
               <LogOut size={16} />
               <span className="sr-only sm:not-sr-only">Sign out</span>

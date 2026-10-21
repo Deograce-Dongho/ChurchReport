@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Save, Search, UserPlus } from 'lucide-react'
+import { CheckCheck, Save, Search, UserPlus } from 'lucide-react'
 
 import { getMembers, createMember } from '../lib/membersService'
-
+import RichTextEditor from '../components/RichTextEditor'
 import {
   getOrCreateService,
   getServiceByDate,
@@ -195,6 +195,11 @@ export default function SundayReport() {
   ).length
   const onlineCount = presentCount - inPersonCount
 
+  // True when every person currently shown in the table is ticked
+  const allVisiblePresent =
+    visiblePeople.length > 0 &&
+    visiblePeople.every((person) => Object.hasOwn(selection, person.$id))
+
   function togglePresent(memberId) {
     setSelection((current) => {
       const next = { ...current }
@@ -203,6 +208,24 @@ export default function SundayReport() {
         delete next[memberId]
       } else {
         next[memberId] = 'In person'
+      }
+
+      return next
+    })
+  }
+
+  // Tick (or untick) everyone currently shown in the table. People who are
+  // already ticked keep their attendance type (In person / Online).
+  function toggleAllVisible() {
+    setSelection((current) => {
+      const next = { ...current }
+
+      if (allVisiblePresent) {
+        visiblePeople.forEach((person) => delete next[person.$id])
+      } else {
+        visiblePeople.forEach((person) => {
+          if (!Object.hasOwn(next, person.$id)) next[person.$id] = 'In person'
+        })
       }
 
       return next
@@ -468,10 +491,10 @@ export default function SundayReport() {
               <label htmlFor="key-points" className={labelClass}>
                 Key Points
               </label>
-              <textarea
+              <RichTextEditor
                 id="key-points"
                 value={keyPoints}
-                onChange={(e) => setKeyPoints(e.target.value)}
+                onChange={setKeyPoints}
                 placeholder="Write the main points of the sermon..."
                 rows={4}
                 className={inputClass}
@@ -494,6 +517,16 @@ export default function SundayReport() {
             </div>
 
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <button
+                type="button"
+                onClick={toggleAllVisible}
+                disabled={busy || visiblePeople.length === 0}
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-brand-900 px-4 py-2 text-sm font-medium text-brand-900 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              >
+                <CheckCheck size={16} />
+                {allVisiblePresent ? 'Clear all' : 'Select all'}
+              </button>
+
               <div
                 role="group"
                 aria-label="Filter by category"

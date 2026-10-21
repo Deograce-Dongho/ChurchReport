@@ -4,6 +4,7 @@ import { Download, Printer } from 'lucide-react'
 
 import { getMembers } from '../lib/membersService'
 import { listServices } from '../lib/servicesService'
+import { richTextClass, sanitizeHtml, hasText } from '../lib/richText'
 import { getAttendanceForService } from '../lib/attendanceService'
 import logo from '../assets/logo.jpg'
 
@@ -385,6 +386,15 @@ export default function PrintReport() {
               <p className="mt-1 text-slate-600">Sunday Service Report</p>
             </div>
           </header>
+          
+          <div className="mt-5 border-l-4 border-brand-600 pl-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Sermon Title
+            </p>
+            <h3 className="mt-1 break-words font-serif text-2xl font-bold leading-snug text-brand-900">
+              {service.sermon_title || 'Not specified'}
+            </h3>
+          </div>
 
           <div className="mt-5">
             <h3 className="font-semibold">Service information</h3>
@@ -398,18 +408,21 @@ export default function PrintReport() {
                 {service.preacher_name || 'Not specified'}
               </dd>
 
-              <dt className="text-slate-500">Sermon title</dt>
-              <dd className="break-words">
-                {service.sermon_title || 'Not specified'}
-              </dd>
             </dl>
           </div>
 
           <div className="mt-5">
             <h3 className="font-semibold">Sermon key points</h3>
-            <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">
-              {service.sermon_key_points?.trim() || 'No key points recorded.'}
-            </p>
+            {hasText(service.sermon_key_points) ? (
+              <div
+                className={`mt-2 break-words text-sm text-slate-700 ${richTextClass}`}
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeHtml(service.sermon_key_points),
+                }}
+              />
+            ) : (
+              <p className="mt-2 text-sm text-slate-700">No key points recorded.</p>
+            )}
           </div>
 
           <div className="mt-5">
