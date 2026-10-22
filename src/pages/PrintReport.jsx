@@ -4,11 +4,24 @@ import { Download, Printer } from 'lucide-react'
 
 import { getMembers } from '../lib/membersService'
 import { listServices } from '../lib/servicesService'
-import { richTextClass, sanitizeHtml, hasText } from '../lib/richText'
 import { getAttendanceForService } from '../lib/attendanceService'
+import { richTextClass, sanitizeHtml, hasText } from '../lib/richText'
 import logo from '../assets/logo.jpg'
 
 const CHURCH_NAME = import.meta.env.VITE_CHURCH_NAME || 'Church Name'
+
+// What the secretary can include in the report
+const CONTENT_OPTIONS = [
+  { id: 'keyPoints', label: 'Sermon key points' },
+  { id: 'summary', label: 'Attendance summary' },
+  { id: 'members', label: 'Members list' },
+  { id: 'visitors', label: 'Visitors list' },
+]
+
+// Section heading: tinted band, coloured bar, capitals. The colours are kept
+// when printing (browsers remove backgrounds unless told otherwise).
+const sectionTitleClass =
+  'rounded-r-md border-l-4 border-brand-600 bg-brand-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-brand-900 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]'
 
 // Format dates using the local calendar.
 function getDateParts(value) {
@@ -107,6 +120,14 @@ export default function PrintReport() {
   const [reportLoading, setReportLoading] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
+
+  // What is shown in the preview, the printout and the PDF
+  const [include, setInclude] = useState({
+    keyPoints: true,
+    summary: true,
+    members: true,
+    visitors: true,
+  })
 
   const printAreaRef = useRef(null)
 
@@ -222,6 +243,12 @@ export default function PrintReport() {
     (person) => person.presenceType === 'Online'
   ).length
 
+  const showList = include.members || include.visitors
+
+  function toggleInclude(id) {
+    setInclude((current) => ({ ...current, [id]: !current[id] }))
+  }
+
   // Download the report as a PDF made of real text (not an image).
   async function handleDownloadPDF() {
     if (!service || reportLoading || downloading) return
@@ -248,6 +275,7 @@ export default function PrintReport() {
           },
           memberRows,
           visitorRows,
+          include,
         },
         `Sunday-Report-${fileDate(service.service_date)}.pdf`
       )
@@ -343,6 +371,37 @@ export default function PrintReport() {
         </div>
       </div>
 
+      <fieldset
+        disabled={downloading}
+        className="rounded-xl border border-slate-200 bg-white p-4 print:hidden"
+      >
+        <legend className="px-1 text-sm font-semibold text-brand-900">
+          Include in the report
+        </legend>
+
+        <div className="mt-1 flex flex-col gap-x-6 sm:flex-row sm:flex-wrap">
+          {CONTENT_OPTIONS.map((option) => (
+            <label
+              key={option.id}
+              className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-slate-700"
+            >
+              <input
+                type="checkbox"
+                checked={include[option.id]}
+                onChange={() => toggleInclude(option.id)}
+                className="h-5 w-5 cursor-pointer accent-brand-900"
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+
+        <p className="text-xs text-slate-500">
+          The service information and the sermon title are always included.
+          This choice applies to the preview, the printout and the PDF.
+        </p>
+      </fieldset>
+
       {error && (
         <p
           role="alert"
@@ -386,10 +445,10 @@ export default function PrintReport() {
               <p className="mt-1 text-slate-600">Sunday Service Report</p>
             </div>
           </header>
-          
+
           <div className="mt-5 border-l-4 border-brand-600 pl-4">
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-              Sermon Title
+              Sermon title
             </p>
             <h3 className="mt-1 break-words font-serif text-2xl font-bold leading-snug text-brand-900">
               {service.sermon_title || 'Not specified'}
@@ -397,9 +456,9 @@ export default function PrintReport() {
           </div>
 
           <div className="mt-5">
-            <h3 className="font-semibold">Service information</h3>
+            <h3 className={sectionTitleClass}>Service information</h3>
 
-            <dl className="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
+            <dl className="mt-3 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
               <dt className="text-slate-500">Date</dt>
               <dd>{formatLongDate(service.service_date)}</dd>
 
@@ -407,63 +466,73 @@ export default function PrintReport() {
               <dd className="break-words">
                 {service.preacher_name || 'Not specified'}
               </dd>
-
             </dl>
           </div>
 
-          <div className="mt-5">
-            <h3 className="font-semibold">Sermon key points</h3>
-            {hasText(service.sermon_key_points) ? (
-              <div
-                className={`mt-2 break-words text-sm text-slate-700 ${richTextClass}`}
-                dangerouslySetInnerHTML={{
-                  __html: sanitizeHtml(service.sermon_key_points),
-                }}
-              />
-            ) : (
-              <p className="mt-2 text-sm text-slate-700">No key points recorded.</p>
-            )}
-          </div>
-
-          <div className="mt-5">
-            <h3 className="font-semibold">Attendance summary</h3>
-
-            {reportLoading ? (
-              <p className="mt-2 text-sm text-slate-500">
-                Loading attendance...
-              </p>
-            ) : (
-              <dl className="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
-                <dt className="text-slate-500">Total</dt>
-                <dd className="font-semibold">{attendees.length}</dd>
-
-                <dt className="text-slate-500">In person</dt>
-                <dd>{inPersonCount}</dd>
-
-                <dt className="text-slate-500">Online</dt>
-                <dd>{onlineCount}</dd>
-
-                <dt className="text-slate-500">Members</dt>
-                <dd>{memberRows.length}</dd>
-
-                <dt className="text-slate-500">Visitors</dt>
-                <dd>{visitorRows.length}</dd>
-              </dl>
-            )}
-          </div>
-
-          {!reportLoading && (
+          {include.keyPoints && (
             <div className="mt-5">
-              <h3 className="font-semibold">Attendance list</h3>
+              <h3 className={sectionTitleClass}>Sermon key points</h3>
+
+              {hasText(service.sermon_key_points) ? (
+                <div
+                  className={`mt-3 break-words text-sm text-slate-700 ${richTextClass}`}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(service.sermon_key_points),
+                  }}
+                />
+              ) : (
+                <p className="mt-3 text-sm text-slate-700">
+                  No key points recorded.
+                </p>
+              )}
+            </div>
+          )}
+
+          {include.summary && (
+            <div className="mt-5">
+              <h3 className={sectionTitleClass}>Attendance summary</h3>
+
+              {reportLoading ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  Loading attendance...
+                </p>
+              ) : (
+                <dl className="mt-3 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
+                  <dt className="text-slate-500">Total</dt>
+                  <dd className="font-semibold">{attendees.length}</dd>
+
+                  <dt className="text-slate-500">In person</dt>
+                  <dd>{inPersonCount}</dd>
+
+                  <dt className="text-slate-500">Online</dt>
+                  <dd>{onlineCount}</dd>
+
+                  <dt className="text-slate-500">Members</dt>
+                  <dd>{memberRows.length}</dd>
+
+                  <dt className="text-slate-500">Visitors</dt>
+                  <dd>{visitorRows.length}</dd>
+                </dl>
+              )}
+            </div>
+          )}
+
+          {showList && !reportLoading && (
+            <div className="mt-5">
+              <h3 className={sectionTitleClass}>Attendance list</h3>
 
               {attendees.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-3 text-sm text-slate-500">
                   No attendance recorded for this service.
                 </p>
               ) : (
                 <>
-                  <AttendanceTable title="Members" rows={memberRows} />
-                  <AttendanceTable title="Visitors" rows={visitorRows} />
+                  {include.members && (
+                    <AttendanceTable title="Members" rows={memberRows} />
+                  )}
+                  {include.visitors && (
+                    <AttendanceTable title="Visitors" rows={visitorRows} />
+                  )}
                 </>
               )}
             </div>
