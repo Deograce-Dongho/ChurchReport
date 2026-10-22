@@ -15,6 +15,10 @@ const CHURCH_NAME = import.meta.env.VITE_CHURCH_NAME || 'Church Name'
 
 const numberFormat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 })
 
+// Same look as the PDF: bold dark blue title with a thin line below
+const sectionTitleClass =
+  'border-b border-slate-300 pb-1 text-base font-bold text-brand-900'
+
 export default function Statistics() {
   const [services, setServices] = useState([])
   const [people, setPeople] = useState([])
@@ -272,15 +276,15 @@ export default function Statistics() {
             </div>
           </header>
 
-          <div className="mt-5">
-            <h3 className="font-semibold">Summary</h3>
+          <div className="mt-6">
+            <h3 className={sectionTitleClass}>Summary</h3>
 
-            <dl className="mt-2 grid grid-cols-[7rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
+            <dl className="mt-3 grid grid-cols-[7rem_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[11rem_minmax(0,1fr)]">
               <dt className="text-slate-500">Services held</dt>
               <dd>{stats.serviceCount}</dd>
 
               <dt className="text-slate-500">Total attendances</dt>
-              <dd className="font-semibold">{stats.totalAttendances}</dd>
+              <dd>{stats.totalAttendances}</dd>
 
               <dt className="text-slate-500">Average / service</dt>
               <dd>{numberFormat.format(stats.average)}</dd>
@@ -306,7 +310,7 @@ export default function Statistics() {
           </div>
 
           <div className="mt-6">
-            <h3 className="font-semibold">Attendance by service</h3>
+            <h3 className={sectionTitleClass}>Attendance by service</h3>
 
             <div
               className="overflow-x-auto"
@@ -314,43 +318,54 @@ export default function Statistics() {
               role="region"
               aria-label="Attendance by service table"
             >
-              <table className="mt-2 w-full min-w-[34rem] border-collapse text-left text-sm">
+              <table className="mt-3 w-full min-w-[34rem] border-collapse text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-300 text-slate-600">
-                    <th className="py-2 pr-2 font-medium">Date</th>
-                    <th className="py-2 pr-2 font-medium">Sermon</th>
-                    <th className="py-2 pr-2 font-medium">In person</th>
-                    <th className="py-2 pr-2 font-medium">Online</th>
-                    <th className="py-2 pr-2 font-medium">Members</th>
-                    <th className="py-2 pr-2 font-medium">Visitors</th>
-                    <th className="py-2 font-medium">Total</th>
+                  <tr className="bg-brand-900 text-white">
+                    <th className="px-2 py-2 font-semibold">Date</th>
+                    <th className="px-2 py-2 font-semibold">Sermon</th>
+                    <th className="px-2 py-2 text-right font-semibold">In person</th>
+                    <th className="px-2 py-2 text-right font-semibold">Online</th>
+                    <th className="px-2 py-2 text-right font-semibold">Members</th>
+                    <th className="px-2 py-2 text-right font-semibold">Visitors</th>
+                    <th className="px-2 py-2 text-right font-semibold">Total</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {stats.rows.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100">
-                      <td className="whitespace-nowrap py-1.5 pr-2 text-slate-700">
+                  {stats.rows.map((row, index) => (
+                    <tr
+                      key={row.id}
+                      className={index % 2 === 1 ? 'bg-slate-50' : ''}
+                    >
+                      <td className="whitespace-nowrap px-2 py-1.5 text-slate-700">
                         {formatShortDate(row.date)}
                       </td>
-                      <td className="py-1.5 pr-2 text-slate-700">{row.title}</td>
-                      <td className="py-1.5 pr-2">{row.inPerson}</td>
-                      <td className="py-1.5 pr-2">{row.online}</td>
-                      <td className="py-1.5 pr-2">{row.members}</td>
-                      <td className="py-1.5 pr-2">{row.visitors}</td>
-                      <td className="py-1.5 font-semibold">{row.total}</td>
+                      <td className="px-2 py-1.5 text-slate-700">{row.title}</td>
+                      <td className="px-2 py-1.5 text-right">{row.inPerson}</td>
+                      <td className="px-2 py-1.5 text-right">{row.online}</td>
+                      <td className="px-2 py-1.5 text-right">{row.members}</td>
+                      <td className="px-2 py-1.5 text-right">{row.visitors}</td>
+                      <td className="px-2 py-1.5 text-right font-semibold">
+                        {row.total}
+                      </td>
                     </tr>
                   ))}
 
-                  <tr className="font-bold text-brand-900">
-                    <td className="py-2 pr-2" colSpan={2}>
+                  <tr className="bg-brand-50 font-bold text-brand-900">
+                    <td className="px-2 py-2" colSpan={2}>
                       Total
                     </td>
-                    <td className="py-2 pr-2">{stats.inPerson}</td>
-                    <td className="py-2 pr-2">{stats.online}</td>
-                    <td className="py-2 pr-2">{stats.memberAttendances}</td>
-                    <td className="py-2 pr-2">{stats.visitorAttendances}</td>
-                    <td className="py-2">{stats.totalAttendances}</td>
+                    <td className="px-2 py-2 text-right">{stats.inPerson}</td>
+                    <td className="px-2 py-2 text-right">{stats.online}</td>
+                    <td className="px-2 py-2 text-right">
+                      {stats.memberAttendances}
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      {stats.visitorAttendances}
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      {stats.totalAttendances}
+                    </td>
                   </tr>
                 </tbody>
               </table>
