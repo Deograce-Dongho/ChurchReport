@@ -1,3 +1,4 @@
+
 import { ID, Query } from 'appwrite'
 import {
   tablesDB,
@@ -5,6 +6,7 @@ import {
   SERVICES_TABLE_ID,
   ATTENDANCE_TABLE_ID,
 } from './appwrite'
+import { KEY_POINTS_MAX } from './constants'
 
 const PAGE_SIZE = 100
 
@@ -41,9 +43,22 @@ export async function getOrCreateService({
   sermonTitle,
   keyPoints,
 }) {
-  if (!serviceDate || !preacherName.trim() || !sermonTitle.trim()) {
+  if (
+    !serviceDate ||
+    !preacherName?.trim() ||
+    !sermonTitle?.trim()
+  ) {
     throw new Error(
       'Please provide the service date, preacher name and sermon title.'
+    )
+  }
+
+  const trimmedKeyPoints = (keyPoints ?? '').trim()
+
+  // Validate Key Points before saving to Appwrite.
+  if (trimmedKeyPoints.length > KEY_POINTS_MAX) {
+    throw new Error(
+      `Key Points must not exceed ${KEY_POINTS_MAX} characters.`
     )
   }
 
@@ -53,7 +68,7 @@ export async function getOrCreateService({
     service_date: new Date(`${serviceDate}T12:00:00`).toISOString(),
     preacher_name: preacherName.trim(),
     sermon_title: sermonTitle.trim(),
-    sermon_key_points: (keyPoints ?? '').trim(),
+    sermon_key_points: trimmedKeyPoints,
   }
 
   if (existingService) {
@@ -91,7 +106,10 @@ export async function getAttendanceForService(serviceId) {
       Query.startsWith('unique_key', prefix),
       Query.limit(PAGE_SIZE),
     ]
-    if (cursor) queries.push(Query.cursorAfter(cursor))
+
+    if (cursor) {
+      queries.push(Query.cursorAfter(cursor))
+    }
 
     const response = await tablesDB.listRows({
       databaseId: DATABASE_ID,
@@ -108,6 +126,7 @@ export async function getAttendanceForService(serviceId) {
     }
 
     if (response.rows.length < PAGE_SIZE) break
+
     cursor = response.rows[response.rows.length - 1].$id
   }
 
@@ -116,7 +135,11 @@ export async function getAttendanceForService(serviceId) {
 
 // Create the attendance record, or update its type if it already exists.
 // Returns { status: 'created' | 'updated' | 'unchanged', row }
-export async function saveAttendance({ serviceId, memberId, presenceType }) {
+export async function saveAttendance({
+  serviceId,
+  memberId,
+  presenceType,
+}) {
   if (!serviceId || !memberId) {
     throw new Error('A service and a member must be selected.')
   }
@@ -131,8 +154,12 @@ export async function saveAttendance({ serviceId, memberId, presenceType }) {
     const res = await tablesDB.listRows({
       databaseId: DATABASE_ID,
       tableId: ATTENDANCE_TABLE_ID,
-      queries: [Query.equal('unique_key', uniqueKey), Query.limit(1)],
+      queries: [
+        Query.equal('unique_key', uniqueKey),
+        Query.limit(1),
+      ],
     })
+
     return res.rows[0] ?? null
   }
 
@@ -152,7 +179,10 @@ export async function saveAttendance({ serviceId, memberId, presenceType }) {
   }
 
   const existing = await findExisting()
-  if (existing) return updateIfNeeded(existing)
+
+  if (existing) {
+    return updateIfNeeded(existing)
+  }
 
   try {
     const row = await tablesDB.createRow({
@@ -173,6 +203,7 @@ export async function saveAttendance({ serviceId, memberId, presenceType }) {
     if (error.code !== 409) throw error
 
     const winner = await findExisting()
+
     if (!winner) throw error
 
     return updateIfNeeded(winner)
@@ -181,10 +212,15 @@ export async function saveAttendance({ serviceId, memberId, presenceType }) {
 
 // Delete the attendance records of this service whose member
 // is no longer ticked. Returns { removed, failed } (counts).
-export async function removeUncheckedAttendance(serviceId, keepMemberIds) {
+export async function removeUncheckedAttendance(
+  serviceId,
+  keepMemberIds
+) {
   const keep = new Set(keepMemberIds)
   const records = await getAttendanceForService(serviceId)
-  const toDelete = records.filter((record) => !keep.has(record.memberId))
+  const toDelete = records.filter(
+    (record) => !keep.has(record.memberId)
+  )
 
   let removed = 0
   let failed = 0
@@ -196,6 +232,7 @@ export async function removeUncheckedAttendance(serviceId, keepMemberIds) {
         tableId: ATTENDANCE_TABLE_ID,
         rowId: record.rowId,
       })
+
       removed++
     } catch (error) {
       console.error('Could not remove attendance record:', error)

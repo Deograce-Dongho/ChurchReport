@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCheck, Save, Search, UserPlus } from 'lucide-react'
 
@@ -10,6 +11,10 @@ import {
   saveAttendance,
   removeUncheckedAttendance,
 } from '../lib/attendanceService'
+import {
+  KEY_POINTS_MAX,
+  KEY_POINTS_WARN_RATIO,
+} from '../lib/constants'
 
 const PRESENCE_TYPES = ['In person', 'Online']
 
@@ -18,6 +23,8 @@ const FILTERS = [
   { id: 'member', label: 'Members' },
   { id: 'visitor', label: 'Visitors' },
 ]
+
+const numberFormat = new Intl.NumberFormat('en-GB')
 
 // Today's date in local time, formatted YYYY-MM-DD
 function todayLocal() {
@@ -29,8 +36,7 @@ function todayLocal() {
   return `${year}-${month}-${day}`
 }
 
-// Fields are at least 44 px tall and use 16 px text on a phone (iOS zooms
-// into smaller text when a field gets the focus).
+// Fields are at least 44 px tall and use 16 px text on a phone.
 const inputClass =
   'min-h-11 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-4 py-3 text-base text-gray-800 outline-none focus:border-brand-600 disabled:opacity-60 sm:text-sm'
 
@@ -53,7 +59,6 @@ export default function SundayReport() {
   const [existingServiceId, setExistingServiceId] = useState(null)
 
   // selection = { [memberId]: 'In person' | 'Online' }
-  // A person is present when their id is a key of this object.
   const [selection, setSelection] = useState({})
 
   // Table controls
@@ -74,6 +79,14 @@ export default function SundayReport() {
   // Prevent repeated actions from rapid clicks
   const submittingRef = useRef(false)
   const addingRef = useRef(false)
+
+  // Key Points size against the Appwrite limit
+  const keyPointsLength = keyPoints.length
+  const keyPointsOverLimit = keyPointsLength > KEY_POINTS_MAX
+  const keyPointsNearLimit =
+    !keyPointsOverLimit &&
+    keyPointsLength >= KEY_POINTS_MAX * KEY_POINTS_WARN_RATIO
+  const keyPointsRemaining = KEY_POINTS_MAX - keyPointsLength
 
   const busy = saving || adding || membersLoading || reportLoading
 
@@ -214,8 +227,7 @@ export default function SundayReport() {
     })
   }
 
-  // Tick (or untick) everyone currently shown in the table. People who are
-  // already ticked keep their attendance type (In person / Online).
+  // Tick (or untick) everyone currently shown in the table.
   function toggleAllVisible() {
     setSelection((current) => {
       const next = { ...current }
@@ -224,7 +236,9 @@ export default function SundayReport() {
         visiblePeople.forEach((person) => delete next[person.$id])
       } else {
         visiblePeople.forEach((person) => {
-          if (!Object.hasOwn(next, person.$id)) next[person.$id] = 'In person'
+          if (!Object.hasOwn(next, person.$id)) {
+            next[person.$id] = 'In person'
+          }
         })
       }
 
@@ -253,7 +267,6 @@ export default function SundayReport() {
     )
 
     if (duplicate) {
-      // Show the existing person so the secretary can tick them
       setFilter('all')
       setSearch(cleanName)
       showMessage(
@@ -306,6 +319,20 @@ export default function SundayReport() {
       return
     }
 
+    if (keyPointsOverLimit) {
+      showMessage(
+        `The key points are too long (${numberFormat.format(
+          keyPointsLength
+        )} / ${numberFormat.format(
+          KEY_POINTS_MAX
+        )} characters). Please shorten them by ${numberFormat.format(
+          -keyPointsRemaining
+        )} characters before saving.`,
+        'error'
+      )
+      return
+    }
+
     if (presentCount === 0) {
       showMessage(
         'Please tick at least one person before saving the report.',
@@ -314,7 +341,6 @@ export default function SundayReport() {
       return
     }
 
-    // Lock the submission before starting asynchronous work
     submittingRef.current = true
     setSaving(true)
     showMessage('')
@@ -497,9 +523,73 @@ export default function SundayReport() {
                 onChange={setKeyPoints}
                 placeholder="Write the main points of the sermon..."
                 rows={4}
+                maxLength={KEY_POINTS_MAX}
                 className={inputClass}
                 disabled={saving || reportLoading}
               />
+
+              {/* Character counter (Appwrite limit) */}
+              <div
+                id="key-points-counter"
+                role="status"
+                aria-live="polite"
+                className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs"
+              >
+                <span
+                  className={
+                    keyPointsOverLimit
+                      ? 'font-medium text-red-700'
+                      : keyPointsNearLimit
+                        ? 'font-medium text-amber-700'
+                        : 'text-gray-500'
+                  }
+                >
+                  {keyPointsOverLimit
+                    ? `${numberFormat.format(
+                        -keyPointsRemaining
+                      )} characters over the limit. Please shorten the text.`
+                    : keyPointsNearLimit
+                      ? `Almost at the limit: ${numberFormat.format(
+                          keyPointsRemaining
+                        )} characters left.`
+                      : 'Formatting also counts toward the limit.'}
+                </span>
+
+                <span
+                  className={`font-medium tabular-nums ${
+                    keyPointsOverLimit
+                      ? 'text-red-700'
+                      : keyPointsNearLimit
+                        ? 'text-amber-700'
+                        : 'text-gray-500'
+                  }`}
+                >
+                  {numberFormat.format(keyPointsLength)} /{' '}
+                  {numberFormat.format(KEY_POINTS_MAX)} characters
+                </span>
+              </div>
+
+              {/* Thin progress bar */}
+              <div
+                className="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-100"
+                aria-hidden="true"
+              >
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    keyPointsOverLimit
+                      ? 'bg-red-500'
+                      : keyPointsNearLimit
+                        ? 'bg-amber-500'
+                        : 'bg-brand-600'
+                  }`}
+                  style={{
+                    width: `${Math.min(
+                      (keyPointsLength / KEY_POINTS_MAX) * 100,
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
             </div>
           </div>
         </section>
@@ -664,11 +754,11 @@ export default function SundayReport() {
                             {person.name}
                           </label>
 
-                          {/* On a phone the category and the attendance type
-                              sit under the name instead of in their own columns */}
                           <div className="mt-2 space-y-2 sm:hidden">
                             <div>{categoryBadge}</div>
-                            <div className="max-w-[10rem]">{presenceSelect}</div>
+                            <div className="max-w-[10rem]">
+                              {presenceSelect}
+                            </div>
                           </div>
                         </td>
 
@@ -698,7 +788,10 @@ export default function SundayReport() {
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_auto_auto_auto] lg:items-end">
               <div className="min-w-0 sm:col-span-2 lg:col-span-1">
-                <label htmlFor="new-name" className="mb-1 block text-xs text-gray-600">
+                <label
+                  htmlFor="new-name"
+                  className="mb-1 block text-xs text-gray-600"
+                >
                   Full name
                 </label>
                 <input
@@ -716,7 +809,10 @@ export default function SundayReport() {
               </div>
 
               <div className="min-w-0">
-                <label htmlFor="new-category" className="mb-1 block text-xs text-gray-600">
+                <label
+                  htmlFor="new-category"
+                  className="mb-1 block text-xs text-gray-600"
+                >
                   Category
                 </label>
                 <select
@@ -732,7 +828,10 @@ export default function SundayReport() {
               </div>
 
               <div className="min-w-0">
-                <label htmlFor="new-presence" className="mb-1 block text-xs text-gray-600">
+                <label
+                  htmlFor="new-presence"
+                  className="mb-1 block text-xs text-gray-600"
+                >
                   Attendance type
                 </label>
                 <select
@@ -779,7 +878,7 @@ export default function SundayReport() {
         <div className="flex sm:justify-end">
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || keyPointsOverLimit}
             className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-900 px-5 py-3 font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             <Save size={18} />

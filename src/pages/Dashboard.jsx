@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  ArrowRight,
   CalendarDays,
   ChartNoAxesColumn,
   FileText,
   Plus,
   Printer,
+  TrendingUp,
+  User,
+  UserPlus,
   Users,
 } from 'lucide-react'
 
@@ -13,11 +17,20 @@ import { getMembers } from '../lib/membersService'
 import { listServices } from '../lib/servicesService'
 import { useServicesAttendance } from '../lib/useServicesAttendance'
 import { formatShortDate } from '../lib/periods'
+import AttendanceChart from '../components/AttendanceChart'
 
-// Number of most recent services used for the average attendance
+// Average attendance uses the four latest services.
 const RECENT_COUNT = 4
 
-const numberFormat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 })
+// The dashboard chart displays the eight latest services.
+const CHART_COUNT = 8
+
+// Attendance goal used for the "achieved" indicator.
+const ATTENDANCE_TARGET = 50
+
+const numberFormat = new Intl.NumberFormat('en-GB', {
+  maximumFractionDigits: 1,
+})
 
 const shortcuts = [
   {
@@ -46,6 +59,35 @@ const shortcuts = [
   },
 ]
 
+// Small rounded icon badge used in the cards.
+function IconBadge({ icon: Icon, size = 18 }) {
+  return (
+    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-brand-600">
+      <Icon size={size} strokeWidth={2} />
+    </span>
+  )
+}
+
+// Summary card: label + icon, content, divider, footer.
+function StatCard({ label, icon, children, footer }) {
+  return (
+    <article className="flex min-w-0 flex-col rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm shadow-slate-900/5 transition hover:shadow-md">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          {label}
+        </p>
+        <IconBadge icon={icon} />
+      </div>
+
+      <div className="mt-3 min-w-0 flex-1">{children}</div>
+
+      <div className="mt-4 flex min-h-9 items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
+        {footer}
+      </div>
+    </article>
+  )
+}
+
 export default function Dashboard() {
   const [services, setServices] = useState([])
   const [people, setPeople] = useState([])
@@ -58,7 +100,7 @@ export default function Dashboard() {
     async function load() {
       try {
         const [serviceRows, peopleRows] = await Promise.all([
-          listServices(), // newest first
+          listServices(),
           getMembers(),
         ])
 
@@ -68,6 +110,7 @@ export default function Dashboard() {
         setPeople(peopleRows)
       } catch (err) {
         console.error('Could not load the dashboard:', err)
+
         if (!cancelled) {
           setLoadError(err.message || 'Could not load the dashboard.')
         }
@@ -83,9 +126,15 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Most recent services, newest first
+  // Four latest services for the average attendance.
   const recentServices = useMemo(
     () => services.slice(0, RECENT_COUNT),
+    [services]
+  )
+
+  // Eight latest services, ordered from oldest to newest.
+  const chartServices = useMemo(
+    () => services.slice(0, CHART_COUNT).reverse(),
     [services]
   )
 
@@ -96,16 +145,63 @@ export default function Dashboard() {
     ready,
     error: attendanceError,
     retry,
-  } = useServicesAttendance(recentServices)
+  } = useServicesAttendance(chartServices)
 
-  const memberCount = useMemo(
-    () => people.filter((person) => person.person_type !== 'visitor').length,
+  const memberList = useMemo(
+    () => people.filter((person) => person.person_type !== 'visitor'),
     [people]
   )
+
+  const memberCount = memberList.length
   const visitorCount = people.length - memberCount
 
-  const lastTotal = lastService ? attendanceById[lastService.$id]?.length : null
+  // Growth vs. the end of the previous month, based on creation date.
+  const memberGrowth = useMemo(() => {
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    startOfMonth.setHours(0, 0, 0, 0)
 
+    const previous = memberList.filter(
+      (person) =>
+        person.$createdAt && new Date(person.$createdAt) < startOfMonth
+    ).length
+
+    if (previous === 0) return null
+
+    return ((memberCount - previous) / previous) * 100
+  }, [memberList, memberCount])
+
+  const peopleById = useMemo(
+    () => new Map(people.map((person) => [person.$id, person])),
+    [people]
+  )
+
+  const lastTotal = lastService
+    ? attendanceById[lastService.$id]?.length
+    : null
+
+  // Prepare the chart data.
+  const chartData = useMemo(() => {
+    if (!ready) return []
+
+    return chartServices.map((service) => {
+      const records = attendanceById[service.$id] ?? []
+
+      const visitors = records.filter(
+        (record) =>
+          peopleById.get(record.memberId)?.person_type === 'visitor'
+      ).length
+
+      return {
+        date: service.service_date,
+        members: records.length - visitors,
+        visitors,
+        total: records.length,
+      }
+    })
+  }, [ready, chartServices, attendanceById, peopleById])
+
+  // Average attendance remains based on the four latest services.
   const average = useMemo(() => {
     if (!ready || recentServices.length === 0) return null
 
@@ -117,45 +213,55 @@ export default function Dashboard() {
     return total / recentServices.length
   }, [ready, recentServices, attendanceById])
 
-  const cardClass = 'min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5'
+  const achieved =
+    average != null
+      ? Math.min(Math.round((average / ATTENDANCE_TARGET) * 100), 999)
+      : null
+
   const placeholder = loading ? '…' : '—'
+  const showMembers = !loading && !loadError
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-6 sm:space-y-8">
+      {/* Page heading */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-brand-900">
+          <h1 className="text-2xl font-bold tracking-tight text-brand-900 sm:text-3xl">
             Welcome to ChurchReport
           </h1>
-          <p className="mt-2 text-slate-500">
+
+          <p className="mt-1.5 text-slate-500">
             Manage your Sunday services in one place.
           </p>
         </div>
 
         <Link
           to="/sunday-report"
-          className="flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto"
+          className="flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-sm shadow-brand-600/25 transition hover:bg-brand-700 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 sm:w-auto"
         >
           <Plus size={18} />
           New Sunday Report
         </Link>
       </div>
 
+      {/* General loading error */}
       {loadError && (
         <p
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
           {loadError}
         </p>
       )}
 
+      {/* Attendance loading error */}
       {attendanceError && !ready && (
         <div
           role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
           <span className="min-w-0 break-words">{attendanceError}</span>
+
           <button
             type="button"
             onClick={retry}
@@ -166,67 +272,147 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <article className={cardClass}>
-          <CalendarDays size={24} className="text-brand-600" />
-          <p className="mt-4 text-sm text-slate-500">Last service</p>
+      {/* Summary cards */}
+      <div className="grid gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-3">
+        {/* Last service */}
+        <StatCard
+          label="Last service"
+          icon={CalendarDays}
+          footer={
+            lastService ? (
+              <>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <User size={13} className="shrink-0 text-slate-400" />
+                  <span className="truncate">{lastService.preacher_name}</span>
+                </span>
+
+                {lastTotal != null && (
+                  <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
+                    {lastTotal} present
+                  </span>
+                )}
+              </>
+            ) : null
+          }
+        >
           {lastService ? (
             <>
-              <p className="mt-1 text-lg font-bold text-brand-900">
+              <p className="text-2xl font-bold tracking-tight text-brand-900">
                 {formatShortDate(lastService.service_date)}
               </p>
-              <p className="mt-1 break-words text-sm text-slate-700">
+
+              <p className="mt-1 break-words text-sm text-slate-600">
                 {lastService.sermon_title}
-              </p>
-              <p className="mt-1 break-words text-xs text-slate-500">
-                {lastService.preacher_name}
-                {lastTotal != null && ` · ${lastTotal} present`}
               </p>
             </>
           ) : (
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="text-sm text-slate-500">
               {loading ? 'Loading...' : 'No service recorded yet.'}
             </p>
           )}
-        </article>
+        </StatCard>
 
-        <article className={cardClass}>
-          <Users size={24} className="text-brand-600" />
-          <p className="mt-4 text-sm text-slate-500">Members</p>
-          <p className="mt-1 text-2xl font-bold text-brand-900">
-            {loading || loadError ? placeholder : memberCount}
+        {/* Members */}
+        <StatCard
+          label="Members"
+          icon={Users}
+          footer={
+            <span className="flex items-center gap-1.5">
+              <UserPlus size={13} className="text-amber-500" />
+              {showMembers
+                ? `${visitorCount} visitor${visitorCount === 1 ? '' : 's'} on record`
+                : ''}
+            </span>
+          }
+        >
+          <p className="text-3xl font-bold tracking-tight text-brand-900">
+            {showMembers ? memberCount : placeholder}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
-            {loading || loadError ? '' : `${visitorCount} visitor(s) on record`}
-          </p>
-        </article>
 
-        <article className={cardClass}>
-          <ChartNoAxesColumn size={24} className="text-brand-600" />
-          <p className="mt-4 text-sm text-slate-500">Average attendance</p>
-          <p className="mt-1 text-2xl font-bold text-brand-900">
+          {showMembers && memberGrowth != null && (
+            <p className="mt-1 text-sm text-slate-500">
+              <span
+                className={`font-semibold ${
+                  memberGrowth >= 0 ? 'text-emerald-600' : 'text-red-600'
+                }`}
+              >
+                {memberGrowth >= 0 ? '+' : ''}
+                {numberFormat.format(memberGrowth)}%
+              </span>{' '}
+              from previous month
+            </p>
+          )}
+        </StatCard>
+
+        {/* Average attendance */}
+        <StatCard
+          label="Average attendance"
+          icon={TrendingUp}
+          footer={
+            <>
+              <span>
+                Target goal: {numberFormat.format(ATTENDANCE_TARGET)}
+              </span>
+
+              {achieved != null && (
+                <span className="font-semibold text-brand-600">
+                  {achieved}% achieved
+                </span>
+              )}
+            </>
+          }
+        >
+          <p className="text-3xl font-bold tracking-tight text-brand-900">
             {average != null ? numberFormat.format(average) : placeholder}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+
+          <p className="mt-1 text-sm text-slate-500">
             {recentServices.length > 0
-              ? `Over the last ${recentServices.length} service(s)`
+              ? `Over the last ${recentServices.length} service${
+                  recentServices.length === 1 ? '' : 's'
+                }`
               : 'No services yet'}
           </p>
-        </article>
+        </StatCard>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
-        {shortcuts.map(({ title, description, path, icon: Icon }) => (
-          <Link
-            key={path}
-            to={path}
-            className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-md sm:p-6"
-          >
-            <Icon size={28} className="text-brand-600" />
-            <h2 className="mt-4 font-semibold text-brand-900">{title}</h2>
-            <p className="mt-2 text-sm text-slate-500">{description}</p>
-          </Link>
-        ))}
+      {/* Attendance chart */}
+      {ready && !loadError && (
+        <AttendanceChart
+          data={chartData}
+          title="Attendance trend"
+          subtitle="Weekly evolution across recent congregations"
+        />
+      )}
+
+      {/* Quick access */}
+      <div>
+        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Quick access
+        </h2>
+
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-4">
+          {shortcuts.map(({ title, description, path, icon }) => (
+            <Link
+              key={path}
+              to={path}
+              className="group flex min-w-0 flex-col rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm shadow-slate-900/5 transition hover:-translate-y-0.5 hover:border-brand-600/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+            >
+              <IconBadge icon={icon} />
+
+              <h3 className="mt-5 font-semibold text-brand-900">{title}</h3>
+
+              <p className="mt-1.5 flex-1 text-sm text-slate-500">
+                {description}
+              </p>
+
+              <ArrowRight
+                size={16}
+                className="mt-4 self-end text-slate-400 transition group-hover:translate-x-1 group-hover:text-brand-600"
+              />
+            </Link>
+          ))}
+        </div>
       </div>
     </section>
   )

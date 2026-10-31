@@ -1,5 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
+import { Extension, getHTMLFromFragment } from '@tiptap/core'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import TextStyle from '@tiptap/extension-text-style'
@@ -16,6 +18,52 @@ import {
 } from 'lucide-react'
 
 import { FONT_OPTIONS, richTextClass, toHtml } from '../lib/richText'
+
+// Refuses any edit that would make the saved HTML longer than the limit.
+// - Deleting text is always allowed, even when the content is already over
+//   the limit (for example a report saved before the limit existed).
+// - Content loaded by the parent (another date) is never blocked.
+// - A paste that would exceed the limit is rejected as a whole, because
+//   cutting formatted text in the middle could break its tags.
+function createMaxLength(getMax) {
+  return Extension.create({
+    name: 'maxLength',
+
+    addProseMirrorPlugins() {
+      const schema = this.editor.schema
+
+      return [
+        new Plugin({
+          key: new PluginKey('maxLength'),
+
+          // Runs for every transaction before it is applied.
+          filterTransaction(transaction, state) {
+            const max = getMax()
+
+            if (!max) return true
+            if (!transaction.docChanged) return true
+            if (transaction.getMeta('preventUpdate')) return true
+
+            const nextLength = getHTMLFromFragment(
+              transaction.doc.content,
+              schema
+            ).length
+
+            if (nextLength <= max) return true
+
+            const previousLength = getHTMLFromFragment(
+              state.doc.content,
+              schema
+            ).length
+
+            // Over the limit: only allow edits that make the text shorter.
+            return nextLength < previousLength
+          },
+        }),
+      ]
+    },
+  })
+}
 
 function ToolButton({ label, active = false, disabled = false, onClick, children }) {
   return (
@@ -45,7 +93,14 @@ export default function RichTextEditor({
   onChange,
   disabled = false,
   placeholder = '',
+  // Maximum length of the saved HTML (formatting tags included).
+  maxLength,
 }) {
+  // The extension reads the limit through a ref, so the editor is not
+  // recreated if the limit changes.
+  const maxLengthRef = useRef(maxLength)
+  maxLengthRef.current = maxLength
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -59,6 +114,7 @@ export default function RichTextEditor({
       Underline,
       TextStyle,
       FontFamily,
+      createMaxLength(() => maxLengthRef.current),
     ],
     content: toHtml(value),
     editable: !disabled,
