@@ -16,27 +16,55 @@ import { drawRichText } from './richTextPdf'
 import { hasText } from '../richText'
 
 // Replace with your brand-900 / brand-50 as [r, g, b] arrays if needed.
-const SERMON_COLOR = COLORS.brand ?? [30, 58, 138]
-const HEADING_BG = [219, 234, 254]
+const BRAND = COLORS.brand ?? [30, 58, 138]
+const NAVY = [15, 23, 42] // table header, like the dark header of the preview
 
-// Section heading: tinted band, coloured bar, bold capitals.
-// It is clearly different from the body text, even when that text is bold.
-function drawSectionHeading(doc, y, text) {
+const TONES = {
+  brand: { bg: [232, 241, 252], bar: BRAND, fg: BRAND },
+  amber: { bg: [254, 243, 226], bar: [217, 119, 6], fg: [146, 64, 14] },
+}
+
+const PRESENCE_COLORS = {
+  'In person': [4, 120, 87],
+  Online: [37, 99, 235],
+}
+const PRESENCE_UNKNOWN = [100, 116, 139]
+
+// Same cards as the preview: Total, In person, Online, Members, Visitors.
+const STAT_STYLES = [
+  { key: 'total', label: 'Total', bg: [241, 245, 249], fg: [100, 116, 139] },
+  { key: 'inPerson', label: 'In person', bg: [240, 249, 255], fg: [3, 105, 161] },
+  { key: 'online', label: 'Online', bg: [238, 242, 255], fg: [67, 56, 202] },
+  { key: 'members', label: 'Members', bg: [236, 253, 245], fg: [4, 120, 87] },
+  { key: 'visitors', label: 'Visitors', bg: [255, 247, 237], fg: [180, 83, 9] },
+]
+
+// Section heading: tinted band, coloured bar, bold capitals, optional label
+// on the right. It is clearly different from the body text.
+function drawSectionHeading(doc, y, text, { meta, tone = 'brand' } = {}) {
+  const colors = TONES[tone] ?? TONES.brand
   const height = 7
 
   // Keep some room below, so a heading is never alone at the page bottom
   y = ensureSpace(doc, y, height + 20)
 
-  doc.setFillColor(...HEADING_BG)
+  doc.setFillColor(...colors.bg)
   doc.rect(PAGE.margin, y, contentWidth(doc), height, 'F')
 
-  doc.setFillColor(...SERMON_COLOR)
+  doc.setFillColor(...colors.bar)
   doc.rect(PAGE.margin, y, 1.5, height, 'F')
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.setTextColor(...SERMON_COLOR)
+  doc.setTextColor(...colors.fg)
   doc.text(text.toUpperCase(), PAGE.margin + 5, y + 4.8, { charSpace: 0.4 })
+
+  if (meta) {
+    doc.setFontSize(8)
+    doc.text(pdfText(meta).toUpperCase(), PAGE.margin + contentWidth(doc) - 3, y + 4.7, {
+      align: 'right',
+    })
+  }
 
   doc.setTextColor(...COLORS.text)
 
@@ -61,7 +89,7 @@ function drawSermonTitle(doc, y, sermonTitle) {
 
   y = ensureSpace(doc, y + 2, height + 3)
 
-  doc.setFillColor(...SERMON_COLOR)
+  doc.setFillColor(...BRAND)
   doc.rect(left, y, 1.2, height, 'F')
 
   doc.setFont('helvetica', 'bold')
@@ -71,7 +99,7 @@ function drawSermonTitle(doc, y, sermonTitle) {
 
   doc.setFont('times', 'bold')
   doc.setFontSize(18)
-  doc.setTextColor(...SERMON_COLOR)
+  doc.setTextColor(...BRAND)
 
   lines.forEach((line, index) => {
     doc.text(line, textX, y + 10 + index * lineHeight)
@@ -80,6 +108,90 @@ function drawSermonTitle(doc, y, sermonTitle) {
   doc.setTextColor(...COLORS.text)
 
   return y + height + 4
+}
+
+// Five coloured cards in a row, like the summary of the preview.
+function drawStatCards(doc, y, summary) {
+  const gap = 3
+  const height = 16
+  const width = (contentWidth(doc) - gap * (STAT_STYLES.length - 1)) / STAT_STYLES.length
+
+  y = ensureSpace(doc, y, height + 2)
+
+  STAT_STYLES.forEach((stat, index) => {
+    const x = PAGE.margin + index * (width + gap)
+
+    doc.setFillColor(...stat.bg)
+    doc.roundedRect(x, y, width, height, 1.5, 1.5, 'F')
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.setTextColor(...stat.fg)
+    doc.text(stat.label.toUpperCase(), x + 3, y + 5.5, { charSpace: 0.3 })
+
+    doc.setFontSize(16)
+    doc.setTextColor(...NAVY)
+    doc.text(String(summary[stat.key] ?? 0), x + 3, y + 13)
+  })
+
+  doc.setTextColor(...COLORS.text)
+
+  return y + height + 2
+}
+
+// Dark-header table with striped rows and a coloured dot before the
+// attendance type (green = in person, blue = online).
+function drawAttendanceTable(doc, autoTable, y, rows, { nameLabel, modeLabel }) {
+  const width = contentWidth(doc)
+  const base = baseTable()
+
+  y = ensureSpace(doc, y, 30)
+
+  autoTable(doc, {
+    ...base,
+    startY: y,
+    head: [['#', nameLabel, modeLabel]],
+    body: rows.map((row, index) => [
+      String(index + 1),
+      pdfText(row.name),
+      pdfText(row.presenceType || 'Unknown'),
+    ]),
+    styles: { ...(base.styles ?? {}), fontSize: 9, cellPadding: 2 },
+    headStyles: {
+      ...(base.headStyles ?? {}),
+      fillColor: NAVY,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+    },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: {
+      0: { cellWidth: 12, textColor: [148, 163, 184] },
+      1: { cellWidth: width - 12 - 42 },
+      2: { cellWidth: 42 },
+    },
+    didParseCell(data) {
+      if (data.section !== 'body' || data.column.index !== 2) return
+
+      data.cell.styles.textColor =
+        PRESENCE_COLORS[data.cell.raw] ?? PRESENCE_UNKNOWN
+      data.cell.styles.fontStyle = 'bold'
+      data.cell.styles.cellPadding = { top: 2, bottom: 2, left: 7, right: 2 }
+    },
+    didDrawCell(data) {
+      if (data.section !== 'body' || data.column.index !== 2) return
+
+      doc.setFillColor(...(PRESENCE_COLORS[data.cell.raw] ?? PRESENCE_UNKNOWN))
+      doc.circle(
+        data.cell.x + 3.8,
+        data.cell.y + data.cell.height / 2,
+        0.9,
+        'F'
+      )
+    },
+  })
+
+  return doc.lastAutoTable.finalY + 4
 }
 
 // Builds the PDF of one Sunday service report.
@@ -127,57 +239,39 @@ export async function buildServiceReportPdf({
   }
 
   if (showSummary) {
-    y = drawSectionHeading(doc, y + 4, 'Attendance summary')
-    y = drawKeyValues(doc, autoTable, y, [
-      ['Total', String(summary.total)],
-      ['In person', String(summary.inPerson)],
-      ['Online', String(summary.online)],
-      ['Members', String(summary.members)],
-      ['Visitors', String(summary.visitors)],
-    ])
+    y = drawSectionHeading(doc, y + 4, 'Attendance summary', {
+      meta: `Total: ${summary.total} persons`,
+    })
+    y = drawStatCards(doc, y, summary)
   }
 
-  if (showMembers || showVisitors) {
-    y = drawSectionHeading(doc, y + 4, 'Attendance list')
+  if (showMembers) {
+    y = drawSectionHeading(doc, y + 4, 'Attendance list', {
+      meta: `Members (${memberRows.length})`,
+    })
 
-    if (memberRows.length + visitorRows.length === 0) {
-      y = drawParagraph(doc, y, 'No attendance recorded for this service.')
-    }
+    y =
+      memberRows.length === 0
+        ? drawParagraph(doc, y, 'No members recorded for this service.')
+        : drawAttendanceTable(doc, autoTable, y, memberRows, {
+            nameLabel: 'Name',
+            modeLabel: 'Attendance type',
+          })
+  }
 
-    const lists = []
-    if (showMembers) lists.push(['Members', memberRows])
-    if (showVisitors) lists.push(['Visitors', visitorRows])
+  if (showVisitors) {
+    y = drawSectionHeading(doc, y + 4, 'Visitors & guests', {
+      tone: 'amber',
+      meta: `Visitors (${visitorRows.length})`,
+    })
 
-    for (const [label, rows] of lists) {
-      if (rows.length === 0) continue
-
-      y = ensureSpace(doc, y + 2, 30)
-
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(10)
-      doc.setTextColor(...COLORS.text)
-      doc.text(`${label} (${rows.length})`, PAGE.margin, y + 4)
-
-      const width = contentWidth(doc)
-
-      autoTable(doc, {
-        ...baseTable(),
-        startY: y + 6,
-        head: [['#', 'Name', 'Attendance type']],
-        body: rows.map((row, index) => [
-          String(index + 1),
-          pdfText(row.name),
-          pdfText(row.presenceType || 'Unknown'),
-        ]),
-        columnStyles: {
-          0: { cellWidth: 12 },
-          1: { cellWidth: width - 12 - 42 },
-          2: { cellWidth: 42 },
-        },
-      })
-
-      y = doc.lastAutoTable.finalY + 4
-    }
+    y =
+      visitorRows.length === 0
+        ? drawParagraph(doc, y, 'No visitors recorded for this service.')
+        : drawAttendanceTable(doc, autoTable, y, visitorRows, {
+            nameLabel: 'Visitor name',
+            modeLabel: 'Mode',
+          })
   }
 
   // Signature line, kept together on one page

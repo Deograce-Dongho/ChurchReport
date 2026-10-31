@@ -1,6 +1,17 @@
-
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCheck, Save, Search, UserPlus } from 'lucide-react'
+import {
+  Building2,
+  CalendarDays,
+  Check,
+  CheckCheck,
+  FileText,
+  Globe,
+  Save,
+  Search,
+  UserCheck,
+  UserPlus,
+  Users,
+} from 'lucide-react'
 
 import { getMembers, createMember } from '../lib/membersService'
 import RichTextEditor from '../components/RichTextEditor'
@@ -16,7 +27,15 @@ import {
   KEY_POINTS_WARN_RATIO,
 } from '../lib/constants'
 
+const CAMPUS_NAME = 'Gemeinde Giessen'
+
 const PRESENCE_TYPES = ['In person', 'Online']
+
+const SERVICE_TYPES = [
+  'Main Sunday Morning Service',
+  'Sunday Evening Service',
+  'Special Service',
+]
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -36,20 +55,75 @@ function todayLocal() {
   return `${year}-${month}-${day}`
 }
 
+function timeLabel(date) {
+  return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
 // Fields are at least 44 px tall and use 16 px text on a phone.
 const inputClass =
-  'min-h-11 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-4 py-3 text-base text-gray-800 outline-none focus:border-brand-600 disabled:opacity-60 sm:text-sm'
+  'min-h-11 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-base text-gray-800 shadow-sm outline-none transition placeholder:text-gray-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15 disabled:bg-gray-50 disabled:opacity-60 sm:text-sm'
 
 const smallInputClass =
-  'min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-base text-gray-800 outline-none focus:border-brand-600 disabled:bg-gray-50 disabled:text-gray-500 sm:text-sm'
+  'min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-base text-gray-800 outline-none transition focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15 disabled:bg-gray-50 disabled:text-gray-500 sm:text-sm'
 
-const labelClass = 'mb-2 block text-sm font-medium text-gray-700'
+const labelClass =
+  'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500'
+
+const cardClass =
+  'overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm'
+
+function Required() {
+  return <span className="text-red-500"> *</span>
+}
+
+function SectionHeader({ icon: Icon, title, step, total }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/60 px-4 py-4 sm:px-6">
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+          <Icon size={18} />
+        </span>
+        <h2 className="text-base font-semibold text-brand-900">{title}</h2>
+      </div>
+      <span className="text-xs text-gray-400">
+        Step {step} of {total}
+      </span>
+    </div>
+  )
+}
+
+function StatCard({ icon: Icon, label, value, tone = 'brand' }) {
+  const tones = {
+    brand: 'bg-brand-50 text-brand-700',
+    blue: 'bg-sky-50 text-sky-700',
+    amber: 'bg-amber-50 text-amber-700',
+    gray: 'bg-gray-100 text-gray-600',
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3">
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}
+      >
+        <Icon size={16} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xl font-bold leading-none tabular-nums text-gray-900">
+          {value}
+        </p>
+        <p className="mt-1 truncate text-xs text-gray-500">{label}</p>
+      </div>
+    </div>
+  )
+}
 
 export default function SundayReport() {
   // Service information
   const [serviceDate, setServiceDate] = useState(todayLocal)
+  const [serviceType, setServiceType] = useState(SERVICE_TYPES[0])
   const [preacher, setPreacher] = useState('')
   const [sermonTitle, setSermonTitle] = useState('')
+  const [scripture, setScripture] = useState('')
   const [keyPoints, setKeyPoints] = useState('')
 
   // People and attendance
@@ -75,6 +149,7 @@ export default function SundayReport() {
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('info')
   const [saving, setSaving] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState(null)
 
   // Prevent repeated actions from rapid clicks
   const submittingRef = useRef(false)
@@ -139,8 +214,10 @@ export default function SundayReport() {
 
         if (!service) {
           setExistingServiceId(null)
+          setServiceType(SERVICE_TYPES[0])
           setPreacher('')
           setSermonTitle('')
+          setScripture('')
           setKeyPoints('')
           setSelection({})
           return
@@ -150,8 +227,10 @@ export default function SundayReport() {
         if (cancelled) return
 
         setExistingServiceId(service.$id)
+        setServiceType(service.service_type || SERVICE_TYPES[0])
         setPreacher(service.preacher_name ?? '')
         setSermonTitle(service.sermon_title ?? '')
+        setScripture(service.scripture_reference ?? '')
         setKeyPoints(service.sermon_key_points ?? '')
         setSelection(
           Object.fromEntries(
@@ -207,6 +286,11 @@ export default function SundayReport() {
     (type) => type === 'In person'
   ).length
   const onlineCount = presentCount - inPersonCount
+
+  const presentMembers = Object.keys(selection).filter(
+    (id) => (peopleById.get(id)?.person_type ?? 'member') === 'member'
+  ).length
+  const presentVisitors = presentCount - presentMembers
 
   // True when every person currently shown in the table is ticked
   const allVisiblePresent =
@@ -348,8 +432,10 @@ export default function SundayReport() {
     try {
       const serviceId = await getOrCreateService({
         serviceDate,
+        serviceType,
         preacherName: preacher,
         sermonTitle,
+        scriptureReference: scripture,
         keyPoints,
       })
 
@@ -415,6 +501,7 @@ export default function SundayReport() {
           'error'
         )
       } else {
+        setLastSavedAt(new Date())
         showMessage(`Report saved. ${summary}`, 'success')
       }
     } catch (error) {
@@ -436,12 +523,79 @@ export default function SundayReport() {
     }
   }
 
+  const counterTone = keyPointsOverLimit
+    ? 'text-red-700'
+    : keyPointsNearLimit
+      ? 'text-amber-700'
+      : 'text-gray-500'
+
+  const saveButton = (
+    <button
+      type="submit"
+      form="sunday-report-form"
+      disabled={busy || keyPointsOverLimit}
+      className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {saving ? <Save size={16} /> : <Check size={16} />}
+      {saving ? 'Saving report...' : 'Save report'}
+    </button>
+  )
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-brand-900">Sunday Report</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Record the details of your Sunday service.
+    <div className="mx-auto max-w-5xl space-y-5 pb-24 sm:pb-8">
+      {/* Page header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-brand-900">Sunday Report</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Record the details of your Sunday service, attendance metrics and
+            notes.
+          </p>
+        </div>
+
+        <div className="hidden items-center gap-2 sm:flex print:hidden">
+          {saveButton}
+        </div>
+      </div>
+
+      {/* Campus card */}
+      <div className={`${cardClass} flex flex-wrap items-center justify-between gap-3 p-4`}>
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+            <Building2 size={20} />
+          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-gray-900">
+                {CAMPUS_NAME}
+              </p>
+              <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">
+                Active campus
+              </span>
+            </div>
+            <p className="text-xs text-gray-500">
+              Service registration &amp; attendance tracking
+            </p>
+          </div>
+        </div>
+
+        <p className="flex items-center gap-2 text-xs text-gray-500">
+          <span
+            className={`h-2 w-2 rounded-full ${
+              saving
+                ? 'animate-pulse bg-amber-500'
+                : existingServiceId || lastSavedAt
+                  ? 'bg-green-500'
+                  : 'bg-gray-300'
+            }`}
+          />
+          {saving
+            ? 'Saving...'
+            : lastSavedAt
+              ? `Saved at ${timeLabel(lastSavedAt)}`
+              : existingServiceId
+                ? 'Report exists for this date'
+                : 'Not saved yet'}
         </p>
       </div>
 
@@ -458,19 +612,25 @@ export default function SundayReport() {
       )}
 
       <form
+        id="sunday-report-form"
         onSubmit={handleSubmit}
         onKeyDown={blockEnterSubmit}
-        className="space-y-6"
+        className="space-y-5"
       >
-        <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-          <h2 className="mb-5 text-lg font-semibold text-brand-900">
-            Service Information
-          </h2>
+        {/* Step 1 */}
+        <section className={cardClass}>
+          <SectionHeader
+            icon={CalendarDays}
+            title="Service Information"
+            step={1}
+            total={2}
+          />
 
-          <div className="grid gap-5 sm:grid-cols-2">
+          <div className="grid gap-5 p-4 sm:grid-cols-3 sm:p-6">
             <div className="min-w-0">
               <label htmlFor="service-date" className={labelClass}>
-                Service Date
+                Service date
+                <Required />
               </label>
               <input
                 id="service-date"
@@ -484,8 +644,27 @@ export default function SundayReport() {
             </div>
 
             <div className="min-w-0">
+              <label htmlFor="service-type" className={labelClass}>
+                Service type
+                <Required />
+              </label>
+              <select
+                id="service-type"
+                value={serviceType}
+                onChange={(e) => setServiceType(e.target.value)}
+                className={inputClass}
+                disabled={saving || reportLoading}
+              >
+                {SERVICE_TYPES.map((type) => (
+                  <option key={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="min-w-0">
               <label htmlFor="preacher" className={labelClass}>
-                Preacher's Name
+                Preacher's name
+                <Required />
               </label>
               <input
                 id="preacher"
@@ -500,7 +679,8 @@ export default function SundayReport() {
 
             <div className="min-w-0 sm:col-span-2">
               <label htmlFor="sermon-title" className={labelClass}>
-                Sermon Title
+                Sermon title
+                <Required />
               </label>
               <input
                 id="sermon-title"
@@ -513,9 +693,23 @@ export default function SundayReport() {
               />
             </div>
 
-            <div className="min-w-0 sm:col-span-2">
+            <div className="min-w-0">
+              <label htmlFor="scripture" className={labelClass}>
+                Scripture reference
+              </label>
+              <input
+                id="scripture"
+                value={scripture}
+                onChange={(e) => setScripture(e.target.value)}
+                placeholder="e.g. John 8:31-36"
+                className={inputClass}
+                disabled={saving || reportLoading}
+              />
+            </div>
+
+            <div className="min-w-0 sm:col-span-3">
               <label htmlFor="key-points" className={labelClass}>
-                Key Points
+                Key points &amp; sermon summary
               </label>
               <RichTextEditor
                 id="key-points"
@@ -535,15 +729,7 @@ export default function SundayReport() {
                 aria-live="polite"
                 className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs"
               >
-                <span
-                  className={
-                    keyPointsOverLimit
-                      ? 'font-medium text-red-700'
-                      : keyPointsNearLimit
-                        ? 'font-medium text-amber-700'
-                        : 'text-gray-500'
-                  }
-                >
+                <span className={keyPointsOverLimit || keyPointsNearLimit ? `font-medium ${counterTone}` : 'text-gray-500'}>
                   {keyPointsOverLimit
                     ? `${numberFormat.format(
                         -keyPointsRemaining
@@ -555,15 +741,7 @@ export default function SundayReport() {
                       : 'Formatting also counts toward the limit.'}
                 </span>
 
-                <span
-                  className={`font-medium tabular-nums ${
-                    keyPointsOverLimit
-                      ? 'text-red-700'
-                      : keyPointsNearLimit
-                        ? 'text-amber-700'
-                        : 'text-gray-500'
-                  }`}
-                >
+                <span className={`font-medium tabular-nums ${counterTone}`}>
                   {numberFormat.format(keyPointsLength)} /{' '}
                   {numberFormat.format(KEY_POINTS_MAX)} characters
                 </span>
@@ -594,55 +772,74 @@ export default function SundayReport() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-brand-900">
-                Attendance
-              </h2>
-              <p className="mt-1 text-sm text-gray-500">
-                {presentCount} present ({inPersonCount} in person,{' '}
-                {onlineCount} online)
-              </p>
+        {/* Step 2 */}
+        <section className={cardClass}>
+          <SectionHeader icon={Users} title="Attendance" step={2} total={2} />
+
+          <div className="space-y-5 p-4 sm:p-6">
+            {/* Live stats */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard icon={UserCheck} label="Present" value={presentCount} />
+              <StatCard
+                icon={Building2}
+                label="In person"
+                value={inPersonCount}
+                tone="blue"
+              />
+              <StatCard
+                icon={Globe}
+                label="Online"
+                value={onlineCount}
+                tone="gray"
+              />
+              <StatCard
+                icon={Users}
+                label={`Members · ${presentVisitors} visitors`}
+                value={presentMembers}
+                tone="amber"
+              />
             </div>
 
-            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              <button
-                type="button"
-                onClick={toggleAllVisible}
-                disabled={busy || visiblePeople.length === 0}
-                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-brand-900 px-4 py-2 text-sm font-medium text-brand-900 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-              >
-                <CheckCheck size={16} />
-                {allVisiblePresent ? 'Clear all' : 'Select all'}
-              </button>
+            {/* Toolbar */}
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={toggleAllVisible}
+                  disabled={busy || visiblePeople.length === 0}
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-brand-600 px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                >
+                  <CheckCheck size={16} />
+                  {allVisiblePresent ? 'Clear all' : 'Select all'}
+                </button>
 
-              <div
-                role="group"
-                aria-label="Filter by category"
-                className="flex w-full overflow-hidden rounded-lg border border-gray-200 sm:w-auto"
-              >
-                {FILTERS.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setFilter(item.id)}
-                    aria-pressed={filter === item.id}
-                    className={`min-h-11 flex-1 px-4 py-2 text-sm sm:flex-none ${
-                      filter === item.id
-                        ? 'bg-brand-900 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                <div
+                  role="group"
+                  aria-label="Filter by category"
+                  className="flex w-full overflow-hidden rounded-lg border border-gray-200 sm:w-auto"
+                >
+                  {FILTERS.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setFilter(item.id)}
+                      aria-pressed={filter === item.id}
+                      className={`min-h-11 flex-1 px-4 py-2 text-sm font-medium transition sm:flex-none ${
+                        filter === item.id
+                          ? 'bg-brand-900 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="relative w-full sm:w-auto">
+              <div className="relative w-full lg:w-64">
                 <Search
                   size={16}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                 />
                 <input
                   type="search"
@@ -650,212 +847,216 @@ export default function SundayReport() {
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search a name..."
                   aria-label="Search a name"
-                  className={`${smallInputClass} w-full pl-9 sm:w-48`}
+                  className={`${smallInputClass} w-full pl-9`}
                 />
               </div>
             </div>
-          </div>
 
-          <div className="mt-5 max-h-[32rem] overflow-auto rounded-lg border border-gray-200">
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 text-gray-500">
-                <tr>
-                  <th className="w-14 px-2 py-3 font-medium sm:w-20 sm:px-4">
-                    Present
-                  </th>
-                  <th className="px-2 py-3 font-medium sm:px-4">Name</th>
-                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
-                    Category
-                  </th>
-                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
-                    Attendance type
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-gray-100">
-                {membersLoading ? (
+            {/* Table */}
+            <div className="max-h-[32rem] overflow-auto rounded-lg border border-gray-200">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                   <tr>
-                    <td
-                      colSpan={4}
-                      className="px-4 py-10 text-center text-gray-500"
-                    >
-                      Loading people...
-                    </td>
+                    <th className="w-14 px-2 py-3 font-semibold sm:w-20 sm:px-4">
+                      Present
+                    </th>
+                    <th className="px-2 py-3 font-semibold sm:px-4">Name</th>
+                    <th className="hidden px-4 py-3 font-semibold sm:table-cell">
+                      Category
+                    </th>
+                    <th className="hidden px-4 py-3 font-semibold sm:table-cell">
+                      Attendance type
+                    </th>
                   </tr>
-                ) : visiblePeople.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="px-4 py-10 text-center text-gray-500"
-                    >
-                      {people.length === 0
-                        ? 'No people yet. Add the first one below.'
-                        : 'No matching people. Change the filter or add this person below.'}
-                    </td>
-                  </tr>
-                ) : (
-                  visiblePeople.map((person) => {
-                    const present = Object.hasOwn(selection, person.$id)
-                    const isVisitor = person.person_type === 'visitor'
+                </thead>
 
-                    const presenceSelect = (
-                      <select
-                        value={selection[person.$id] ?? 'In person'}
-                        onChange={(e) =>
-                          changePresenceType(person.$id, e.target.value)
-                        }
-                        disabled={!present || busy}
-                        aria-label={`Attendance type for ${person.name}`}
-                        className={smallInputClass}
+                <tbody className="divide-y divide-gray-100">
+                  {membersLoading ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-4 py-10 text-center text-gray-500"
                       >
-                        {PRESENCE_TYPES.map((type) => (
-                          <option key={type}>{type}</option>
-                        ))}
-                      </select>
-                    )
-
-                    const categoryBadge = (
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs ${
-                          isVisitor
-                            ? 'bg-amber-50 text-amber-800'
-                            : 'bg-brand-50 text-brand-800'
-                        }`}
+                        Loading people...
+                      </td>
+                    </tr>
+                  ) : visiblePeople.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-4 py-10 text-center text-gray-500"
                       >
-                        {isVisitor ? 'Visitor' : 'Member'}
-                      </span>
-                    )
+                        {people.length === 0
+                          ? 'No people yet. Add the first one below.'
+                          : 'No matching people. Change the filter or add this person below.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    visiblePeople.map((person) => {
+                      const present = Object.hasOwn(selection, person.$id)
+                      const isVisitor = person.person_type === 'visitor'
 
-                    return (
-                      <tr
-                        key={person.$id}
-                        className={present ? 'bg-brand-50' : 'hover:bg-gray-50'}
-                      >
-                        <td className="px-2 py-1 align-top sm:px-4 sm:align-middle">
-                          <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
-                            <input
-                              id={`present-${person.$id}`}
-                              type="checkbox"
-                              checked={present}
-                              onChange={() => togglePresent(person.$id)}
-                              disabled={busy}
-                              aria-label={`${person.name} was present`}
-                              className="h-5 w-5 cursor-pointer accent-brand-900"
-                            />
-                          </label>
-                        </td>
+                      const presenceSelect = (
+                        <select
+                          value={selection[person.$id] ?? 'In person'}
+                          onChange={(e) =>
+                            changePresenceType(person.$id, e.target.value)
+                          }
+                          disabled={!present || busy}
+                          aria-label={`Attendance type for ${person.name}`}
+                          className={smallInputClass}
+                        >
+                          {PRESENCE_TYPES.map((type) => (
+                            <option key={type}>{type}</option>
+                          ))}
+                        </select>
+                      )
 
-                        <td className="px-2 py-2 font-medium text-gray-800 sm:px-4 sm:py-3">
-                          <label
-                            htmlFor={`present-${person.$id}`}
-                            className="block min-h-6 cursor-pointer break-words"
-                          >
-                            {person.name}
-                          </label>
+                      const categoryBadge = (
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                            isVisitor
+                              ? 'bg-amber-50 text-amber-800'
+                              : 'bg-brand-50 text-brand-800'
+                          }`}
+                        >
+                          {isVisitor ? 'Visitor' : 'Member'}
+                        </span>
+                      )
 
-                          <div className="mt-2 space-y-2 sm:hidden">
-                            <div>{categoryBadge}</div>
-                            <div className="max-w-[10rem]">
-                              {presenceSelect}
+                      return (
+                        <tr
+                          key={person.$id}
+                          className={`transition-colors ${
+                            present ? 'bg-brand-50/70' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <td className="px-2 py-1 align-top sm:px-4 sm:align-middle">
+                            <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
+                              <input
+                                id={`present-${person.$id}`}
+                                type="checkbox"
+                                checked={present}
+                                onChange={() => togglePresent(person.$id)}
+                                disabled={busy}
+                                aria-label={`${person.name} was present`}
+                                className="h-5 w-5 cursor-pointer accent-brand-600"
+                              />
+                            </label>
+                          </td>
+
+                          <td className="px-2 py-2 font-medium text-gray-800 sm:px-4 sm:py-3">
+                            <label
+                              htmlFor={`present-${person.$id}`}
+                              className="block min-h-6 cursor-pointer break-words"
+                            >
+                              {person.name}
+                            </label>
+
+                            <div className="mt-2 space-y-2 sm:hidden">
+                              <div>{categoryBadge}</div>
+                              <div className="max-w-[10rem]">
+                                {presenceSelect}
+                              </div>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="hidden px-4 py-3 sm:table-cell">
-                          {categoryBadge}
-                        </td>
+                          <td className="hidden px-4 py-3 sm:table-cell">
+                            {categoryBadge}
+                          </td>
 
-                        <td className="hidden px-4 py-3 sm:table-cell">
-                          {presenceSelect}
-                        </td>
-                      </tr>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                          <td className="hidden px-4 py-3 sm:table-cell">
+                            {presenceSelect}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-          <div className="mt-6 rounded-lg border border-dashed border-gray-300 p-4">
-            <h3 className="text-sm font-semibold text-gray-900">
-              Not in the list? Add a person
-            </h3>
-            <p className="mt-1 text-xs text-gray-500">
-              The person is saved in Members &amp; Visitors and marked as
-              present.
-            </p>
+            {/* Add a person */}
+            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50/50 p-4">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Not in the list? Add a person
+              </h3>
+              <p className="mt-1 text-xs text-gray-500">
+                The person is saved in Members &amp; Visitors and marked as
+                present.
+              </p>
 
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_auto_auto_auto] lg:items-end">
-              <div className="min-w-0 sm:col-span-2 lg:col-span-1">
-                <label
-                  htmlFor="new-name"
-                  className="mb-1 block text-xs text-gray-600"
-                >
-                  Full name
-                </label>
-                <input
-                  id="new-name"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') addPerson()
-                  }}
-                  placeholder="Enter full name"
-                  maxLength={255}
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_auto_auto_auto] lg:items-end">
+                <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+                  <label
+                    htmlFor="new-name"
+                    className="mb-1 block text-xs text-gray-600"
+                  >
+                    Full name
+                  </label>
+                  <input
+                    id="new-name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addPerson()
+                    }}
+                    placeholder="Enter full name"
+                    maxLength={255}
+                    disabled={busy}
+                    className={`${smallInputClass} w-full`}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <label
+                    htmlFor="new-category"
+                    className="mb-1 block text-xs text-gray-600"
+                  >
+                    Category
+                  </label>
+                  <select
+                    id="new-category"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    disabled={busy}
+                    className={`${smallInputClass} w-full`}
+                  >
+                    <option value="visitor">Visitor</option>
+                    <option value="member">Member</option>
+                  </select>
+                </div>
+
+                <div className="min-w-0">
+                  <label
+                    htmlFor="new-presence"
+                    className="mb-1 block text-xs text-gray-600"
+                  >
+                    Attendance type
+                  </label>
+                  <select
+                    id="new-presence"
+                    value={newPresence}
+                    onChange={(e) => setNewPresence(e.target.value)}
+                    disabled={busy}
+                    className={`${smallInputClass} w-full`}
+                  >
+                    {PRESENCE_TYPES.map((type) => (
+                      <option key={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addPerson}
                   disabled={busy}
-                  className={`${smallInputClass} w-full`}
-                />
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-900 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 lg:col-span-1"
+                >
+                  <UserPlus size={16} />
+                  {adding ? 'Adding...' : 'Add person'}
+                </button>
               </div>
-
-              <div className="min-w-0">
-                <label
-                  htmlFor="new-category"
-                  className="mb-1 block text-xs text-gray-600"
-                >
-                  Category
-                </label>
-                <select
-                  id="new-category"
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
-                  disabled={busy}
-                  className={`${smallInputClass} w-full`}
-                >
-                  <option value="visitor">Visitor</option>
-                  <option value="member">Member</option>
-                </select>
-              </div>
-
-              <div className="min-w-0">
-                <label
-                  htmlFor="new-presence"
-                  className="mb-1 block text-xs text-gray-600"
-                >
-                  Attendance type
-                </label>
-                <select
-                  id="new-presence"
-                  value={newPresence}
-                  onChange={(e) => setNewPresence(e.target.value)}
-                  disabled={busy}
-                  className={`${smallInputClass} w-full`}
-                >
-                  {PRESENCE_TYPES.map((type) => (
-                    <option key={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="button"
-                onClick={addPerson}
-                disabled={busy}
-                className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-900 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 lg:col-span-1"
-              >
-                <UserPlus size={16} />
-                {adding ? 'Adding...' : 'Add person'}
-              </button>
             </div>
           </div>
         </section>
@@ -863,29 +1064,29 @@ export default function SundayReport() {
         {message && (
           <p
             role="status"
-            className={`break-words rounded-lg p-4 text-sm ${
+            className={`break-words rounded-lg border p-4 text-sm ${
               messageType === 'error'
-                ? 'bg-red-50 text-red-800'
+                ? 'border-red-100 bg-red-50 text-red-800'
                 : messageType === 'success'
-                  ? 'bg-green-50 text-green-800'
-                  : 'bg-brand-50 text-brand-900'
+                  ? 'border-green-100 bg-green-50 text-green-800'
+                  : 'border-brand-100 bg-brand-50 text-brand-900'
             }`}
           >
             {message}
           </p>
         )}
-
-        <div className="flex sm:justify-end">
-          <button
-            type="submit"
-            disabled={busy || keyPointsOverLimit}
-            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-900 px-5 py-3 font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-          >
-            <Save size={18} />
-            {saving ? 'Saving report...' : 'Save report'}
-          </button>
-        </div>
       </form>
+
+      {/* Mobile sticky action bar */}
+      <div className="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:hidden print:hidden">
+        <div className="min-w-0 flex-1 text-xs text-gray-500">
+          <span className="block text-sm font-semibold text-gray-900">
+            {presentCount} present
+          </span>
+          {inPersonCount} in person · {onlineCount} online
+        </div>
+        {saveButton}
+      </div>
     </div>
   )
 }
